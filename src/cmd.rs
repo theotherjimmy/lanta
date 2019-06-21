@@ -91,6 +91,20 @@ pub mod lazy {
         })
     }
 
+    pub fn next_group() -> Command {
+        Rc::new(|wm| {
+            wm.next_group();
+            Ok(())
+        })
+    }
+
+    pub fn prev_group() -> Command {
+        Rc::new(|wm| {
+            wm.prev_group();
+            Ok(())
+        })
+    }
+
     /// Moves the focused window on the active group to another group.
     pub fn move_window_to_group(name: &'static str) -> Command {
         Rc::new(move |wm| {

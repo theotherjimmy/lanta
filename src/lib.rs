@@ -245,6 +245,24 @@ impl Lanta {
         self.connection.update_ewmh_desktops(&self.groups);
     }
 
+    pub fn next_group(&mut self) {
+        info!("next group");
+        self.group_mut().deactivate();
+        self.groups.focus_next();
+        let viewport = self.viewport();
+        self.group_mut().activate(viewport);
+        self.connection.update_ewmh_desktops(&self.groups);
+    }
+
+    pub fn prev_group(&mut self) {
+        info!("prev group");
+        self.group_mut().deactivate();
+        self.groups.focus_previous();
+        let viewport = self.viewport();
+        self.group_mut().activate(viewport);
+        self.connection.update_ewmh_desktops(&self.groups);
+    }
+
     /// Move the focused window from the active group to another named group.
     ///
     /// If the other named group does not exist, then the window is
