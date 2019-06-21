@@ -9,6 +9,7 @@ mod tiled;
 
 pub use self::stack::StackLayout;
 pub use self::tiled::TiledLayout;
+pub use self::tiled::ThreeColumn;
 
 pub trait LayoutClone {
     fn clone_box(&self) -> Box<dyn Layout>;
