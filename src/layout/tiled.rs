@@ -28,17 +28,17 @@ impl Layout for TiledLayout {
             return;
         }
 
-        let tile_height = ((viewport.height - self.padding) / stack.len() as u32) - self.padding;
+        let tile_width = ((viewport.width - self.padding) / stack.len() as u32) - self.padding;
 
         for (i, window_id) in stack.iter().enumerate() {
             connection.disable_window_tracking(window_id);
             connection.map_window(window_id);
             connection.configure_window(
                 window_id,
-                viewport.x + self.padding,
-                viewport.y + self.padding + (i as u32 * (tile_height + self.padding)),
-                viewport.width - (self.padding * 2),
-                tile_height,
+                viewport.x + self.padding + (i as u32 * (tile_width + self.padding)),
+                viewport.y + self.padding,
+                tile_width,
+                viewport.height - (self.padding * 2),
             );
             connection.enable_window_tracking(window_id);
         }
