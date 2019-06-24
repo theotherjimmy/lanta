@@ -116,8 +116,6 @@ impl<T> Stack<T> {
     {
         if let Some(position) = self.windows.iter().position(&mut p) {
             self.focused = position;
-        } else {
-            panic!("No element in stack matches predicate");
         }
     }
 
