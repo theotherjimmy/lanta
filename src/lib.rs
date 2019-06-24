@@ -295,6 +295,42 @@ impl Lanta {
         }
     }
 
+    pub fn move_focused_to_next_group(&mut self) {
+        if let Some(removed) = self.group_mut().remove_focused() {
+            self.groups.focus_next();
+            let new_group = self.groups.focused_mut();
+            match new_group {
+                Some(new_group) => {
+                    new_group.add_window(removed);
+                }
+                None => {
+                    // It would be nice to put the window back in its group (or avoid taking it out
+                    // of its group until we've checked the new group exists), but it's difficult
+                    // to do this while keeping the borrow checker happy.
+                    error!("Moved window {} to non-existent group", removed);
+                }
+            }
+        }
+    }
+
+    pub fn move_focused_to_prev_group(&mut self) {
+        if let Some(removed) = self.group_mut().remove_focused() {
+            self.groups.focus_previous();
+            let new_group = self.groups.focused_mut();
+            match new_group {
+                Some(new_group) => {
+                    new_group.add_window(removed);
+                }
+                None => {
+                    // It would be nice to put the window back in its group (or avoid taking it out
+                    // of its group until we've checked the new group exists), but it's difficult
+                    // to do this while keeping the borrow checker happy.
+                    error!("Moved window {} to non-existent group", removed);
+                }
+            }
+        }
+    }
+
     /// Returns whether the window is a member of any group.
     fn is_window_managed(&self, window_id: &WindowId) -> bool {
         self.groups.iter().any(|g| g.contains(window_id))

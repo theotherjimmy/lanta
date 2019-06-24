@@ -112,4 +112,20 @@ pub mod lazy {
             Ok(())
         })
     }
+
+    /// Moves the focused window on the active group to another group.
+    pub fn move_window_to_next_group() -> Command {
+        Rc::new(move |wm| {
+            wm.move_focused_to_next_group();
+            Ok(())
+        })
+    }
+
+    /// Moves the focused window on the active group to another group.
+    pub fn move_window_to_prev_group() -> Command {
+        Rc::new(move |wm| {
+            wm.move_focused_to_prev_group();
+            Ok(())
+        })
+    }
 }
