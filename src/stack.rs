@@ -123,21 +123,15 @@ impl<T> Stack<T> {
 
     /// Shifts focus to the next element.
     pub fn focus_next(&mut self) {
-        self.focused += 1;
-        if self.focused >= self.len() {
-            self.focused = 0;
+        if self.focused < self.len() - 1 {
+            self.focused += 1;
         }
     }
 
     /// Shifts focus to the previous element.
     pub fn focus_previous(&mut self) {
-        match self.focused.checked_sub(1) {
-            Some(new_focused) => self.focused = new_focused,
-            None => self.focused = if self.windows.is_empty(){
-                0
-            } else {
-                self.windows.len() - 1
-            },
+        if self.focused > 0 {
+            self.focused -= 1;
         }
     }
 
@@ -326,7 +320,7 @@ mod test {
         assert_eq!(stack, vec);
 
         stack.focus_next();
-        assert_eq!(stack.focused(), Some(&1));
+        assert_eq!(stack.focused(), Some(&3));
         assert_eq!(stack, vec);
     }
 
@@ -341,12 +335,19 @@ mod test {
         assert_eq!(stack.focused(), Some(&1));
         assert_eq!(stack, vec);
 
-        stack.focus_previous();
+        stack.focus_next();
+        stack.focus_next();
+        stack.focus_next();
+
         assert_eq!(stack.focused(), Some(&3));
         assert_eq!(stack, vec);
 
         stack.focus_previous();
         assert_eq!(stack.focused(), Some(&2));
+        assert_eq!(stack, vec);
+
+        stack.focus_previous();
+        assert_eq!(stack.focused(), Some(&1));
         assert_eq!(stack, vec);
 
         stack.focus_previous();
