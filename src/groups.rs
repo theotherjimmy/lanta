@@ -177,7 +177,7 @@ impl Group {
     }
 
     pub fn layout_next(&mut self) {
-        self.layouts.focus_next();
+        self.layouts.focus_next_wrap();
         info!(
             "Switching to next layout in group {}: {:?}",
             self.name(),

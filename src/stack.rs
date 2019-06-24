@@ -126,6 +126,15 @@ impl<T> Stack<T> {
         }
     }
 
+    /// Shifts focus to the next element.
+    pub fn focus_next_wrap(&mut self) {
+        if self.focused < self.len() - 1 {
+            self.focused += 1;
+        } else {
+            self.focused = 0;
+        }
+    }
+
     /// Shifts focus to the previous element.
     pub fn focus_previous(&mut self) {
         if self.focused > 0 {
