@@ -427,7 +427,7 @@ impl Lanta {
         // We only receive an unmap notify event when the window is actually
         // unmapped by its application. When our layouts unmap windows, they
         // (should) do it by disabling event tracking first.
-        self.unmanage_window(window_id);
+        debug!("ignoring unmap notify request for {}", window_id);
     }
 
     fn on_destroy_notify(&mut self, window_id: &WindowId) {
