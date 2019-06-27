@@ -297,6 +297,7 @@ impl Lanta {
 
     pub fn move_focused_to_next_group(&mut self) {
         if let Some(removed) = self.group_mut().remove_focused() {
+            self.group_mut().deactivate();
             self.groups.focus_next();
             let new_group = self.groups.focused_mut();
             match new_group {
@@ -310,11 +311,14 @@ impl Lanta {
                     error!("Moved window {} to non-existent group", removed);
                 }
             }
+            let viewport = self.viewport();
+            self.group_mut().activate(viewport);
         }
     }
 
     pub fn move_focused_to_prev_group(&mut self) {
         if let Some(removed) = self.group_mut().remove_focused() {
+            self.group_mut().deactivate();
             self.groups.focus_previous();
             let new_group = self.groups.focused_mut();
             match new_group {
@@ -328,6 +332,8 @@ impl Lanta {
                     error!("Moved window {} to non-existent group", removed);
                 }
             }
+            let viewport = self.viewport();
+            self.group_mut().activate(viewport);
         }
     }
 
