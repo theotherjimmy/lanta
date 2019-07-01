@@ -194,12 +194,12 @@ impl Lanta {
         let mut wm = Lanta {
             keys,
             groups,
-            connection: connection.clone(),
+            connection: connection,
             screen: Screen::default(),
         };
 
         // Learn about existing top-level windows.
-        let existing_windows = connection.top_level_windows()?;
+        let existing_windows = wm.connection.top_level_windows()?;
         for window in existing_windows {
             wm.manage_window(window);
         }
