@@ -147,6 +147,9 @@ impl Connection {
             WindowState::DemandsAttention,
         );
 
+        let supported_atoms = [conn.ACTIVE_WINDOW(), conn.CURRENT_DESKTOP()];
+        ewmh::set_supported(&conn, screen_idx, &supported_atoms);
+
         Ok(Connection {
             conn,
             root: WindowId(root),
