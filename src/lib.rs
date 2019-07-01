@@ -201,7 +201,13 @@ impl Lanta {
         // Learn about existing top-level windows.
         let existing_windows = wm.connection.top_level_windows()?;
         for window in existing_windows {
-            wm.manage_window(window);
+            let window_types = wm.connection.get_window_types(&window);
+            if !window_types.contains(&WindowType::Notification)
+                && !window_types.contains(&WindowType::Tooltip)
+                && !window_types.contains(&WindowType::Utility)
+            {
+                wm.manage_window(window);
+            }
         }
         let viewport = wm.viewport();
         wm.group_mut().activate(viewport);
