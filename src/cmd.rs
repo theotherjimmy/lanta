@@ -73,12 +73,13 @@ pub mod lazy {
     /// The returned `Command` will spawn the `Command` each time it is called.
     pub fn spawn(command: process::Command) -> Command {
         let mutex = Mutex::new(command);
-        Rc::new(move |_| {
+        Rc::new(move |ref mut wm| {
             let mut command = mutex.lock().unwrap();
             info!("Spawning: {:?}", *command);
-            command
+            let child = command
                 .spawn()
                 .with_context(|_| format!("Could not spawn command: {:?}", *command))?;
+            wm.wait_on_child(child);
             Ok(())
         })
     }

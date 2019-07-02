@@ -5,6 +5,7 @@ extern crate log;
 
 use std::cell::RefCell;
 use std::cmp;
+use std::process::Child;
 use std::rc::Rc;
 
 use failure::{Error, ResultExt};
@@ -173,6 +174,7 @@ pub struct Lanta {
     keys: KeyHandlers,
     groups: Stack<Group>,
     screen: Screen,
+    children: Vec<Child>,
 }
 
 impl Lanta {
@@ -196,6 +198,7 @@ impl Lanta {
             groups,
             connection: connection,
             screen: Screen::default(),
+            children: Vec::new(),
         };
 
         // Learn about existing top-level windows.
@@ -221,6 +224,10 @@ impl Lanta {
             .connection
             .get_window_geometry(self.connection.root_window_id());
         self.screen.viewport(width, height)
+    }
+
+    pub fn wait_on_child(&mut self, cld: Child) {
+        self.children.push(cld);
     }
 
     pub fn group(&self) -> &Group {
@@ -407,6 +414,21 @@ impl Lanta {
                 Event::KeyPress(key) => self.on_key_press(key),
                 Event::EnterNotify(window_id) => self.on_enter_notify(&window_id),
             }
+            self.children = self
+                .children
+                .into_iter()
+                .filter_map(|mut cld| match cld.try_wait() {
+                    Ok(Some(status)) => {
+                        info!("Reaping child process with exit code {}", status);
+                        None
+                    }
+                    Ok(None) => Some(cld),
+                    Err(e) => {
+                        warn!("Could not wait on child: {}", e);
+                        Some(cld)
+                    }
+                })
+                .collect()
         }
         info!("Event loop exiting");
     }
