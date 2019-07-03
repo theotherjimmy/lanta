@@ -34,7 +34,7 @@ fn main() -> Result<()> {
         (vec![modkey], XK_Tab, cmd::lazy::layout_next()),
 
         (vec![modkey], XK_c, spawn!("alacritty")),
-        (vec![modkey], XK_p, spawn!("dmenu_run")),
+        (vec![modkey], XK_p, spawn!("rofi", "-show", "run")),
         (vec![modkey], XK_a, spawn!("amixer", "-q", "set", "Master", "2%-")),
         (vec![modkey, shift], XK_s, spawn!("slock")),
         (vec![modkey, shift], XK_a, spawn!("amixer", "-q", "set", "Master", "2%+")),
