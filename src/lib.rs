@@ -204,13 +204,7 @@ impl Lanta {
         // Learn about existing top-level windows.
         let existing_windows = wm.connection.top_level_windows()?;
         for window in existing_windows {
-            let window_types = wm.connection.get_window_types(&window);
-            if !window_types.contains(&WindowType::Notification)
-                && !window_types.contains(&WindowType::Tooltip)
-                && !window_types.contains(&WindowType::Utility)
-            {
-                wm.manage_window(window);
-            }
+            wm.manage_window(window);
         }
         let viewport = wm.viewport();
         wm.group_mut().activate(viewport);
@@ -370,10 +364,17 @@ impl Lanta {
         }
 
         let window_types = self.connection.get_window_types(&window_id);
-        let dock = window_types.contains(&WindowType::Dock);
 
+        let dock = window_types.contains(&WindowType::Dock);
         self.connection
             .enable_window_key_events(&window_id, &self.keys);
+
+        if window_types.contains(&WindowType::Notification)
+            || window_types.contains(&WindowType::Tooltip)
+            || window_types.contains(&WindowType::Utility)
+        {
+            return;
+        }
 
         if dock {
             self.connection.map_window(&window_id);
