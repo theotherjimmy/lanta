@@ -46,9 +46,12 @@ fn main() -> Result<()> {
         Box::new(ThreeColumn::new("3 column", padding)),
     ];
     let groups = vec![
-        GroupBuilder::new("browser", "stack"),
-        GroupBuilder::new("term", "3 column"),
-        GroupBuilder::new("misc", "3 column"),
+        GroupBuilder::new("\u{2645}", "stack"),
+        GroupBuilder::new("\u{2646}", "3 column"),
+        GroupBuilder::new("\u{2647}", "3 column"),
+        GroupBuilder::new("\u{2648}", "3 column"),
+        GroupBuilder::new("\u{2649}", "3 column"),
+        GroupBuilder::new("\u{264a}", "3 column"),
     ];
 
     lanta::intiailize_logger()?;
