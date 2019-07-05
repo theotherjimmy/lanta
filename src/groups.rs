@@ -196,4 +196,8 @@ impl Group {
         self.layouts.focus_previous();
         self.perform_layout();
     }
+
+    pub fn iter(&self) -> impl Iterator<Item=&WindowId> {
+        self.stack.iter()
+    }
 }
