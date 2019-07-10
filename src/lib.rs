@@ -370,6 +370,16 @@ impl Lanta {
         self.connection
             .enable_window_key_events(&window_id, &self.keys);
 
+        let attrs = self.connection.get_window_attributes(&window_id);
+        match attrs {
+            Ok(wattrs) => if wattrs.override_redirect() {
+                return;
+            }
+            Err(e) => {
+                warn!("Could not get window attrs for {}: {}", window_id, e);
+                return;
+            }
+        }
         if window_types.contains(&WindowType::Notification)
             || window_types.contains(&WindowType::Tooltip)
             || window_types.contains(&WindowType::Utility)

@@ -187,6 +187,10 @@ impl Connection {
         Ok(())
     }
 
+    pub fn get_window_attributes(&self, w_id: &WindowId) -> Result<xcb::GetWindowAttributesReply> {
+        Ok(xcb::get_window_attributes(&self.conn, w_id.to_x()).get_reply()?)
+    }
+
     /// Returns the ID of the root window.
     pub fn root_window_id(&self) -> &WindowId {
         &self.root
