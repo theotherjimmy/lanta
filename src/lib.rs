@@ -61,54 +61,6 @@ pub fn intiailize_logger() -> Result<()> {
     Ok(())
 }
 
-#[macro_export]
-macro_rules! keys {
-    [ $( ([$( $mod:ident ),*], $key:ident, $cmd:expr) ),+ $(,)*] => (
-        vec![
-            $( (vec![$( $mod ),*],  $crate::keysym::$key, $cmd) ),+
-        ]
-    )
-}
-
-#[macro_export]
-macro_rules! groups {
-    {
-        $keys:ident,
-        $movemodkey:ident,
-        [
-            $(( [$( $modkey:ident ),+], $key:ident, $name:expr, $layout:expr )),+
-            $(,)*
-        ]
-    }  => {{
-        $keys.extend(keys![
-            // Switch to group:
-            $(
-                ([$($modkey),+], $key, $crate::cmd::lazy::switch_group($name))
-            ),+,
-            // Move window to group:
-            $(
-                ([$($modkey),+, $movemodkey], $key,  $crate::cmd::lazy::move_window_to_group($name))
-            ),+
-        ]);
-        vec![
-            $(
-                 $crate::GroupBuilder::new($name, $layout)
-            ),+
-        ]
-    }}
-}
-
-#[macro_export]
-macro_rules! layouts {
-    [$( $layout:expr ),+ $(,)*] => (
-        vec![
-            $(
-                Box::new($layout) as Box<$crate::layout::Layout>
-            ),+
-        ]
-    )
-}
-
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Viewport {
     pub x: u32,
