@@ -3,7 +3,6 @@
 #[macro_use]
 extern crate log;
 
-use std::cell::RefCell;
 use std::cmp;
 use std::process::Child;
 use std::rc::Rc;
@@ -76,20 +75,20 @@ struct Dock {
 
 #[derive(Default)]
 struct Screen {
-    vec: RefCell<Vec<Dock>>,
+    vec: Vec<Dock>,
 }
 
 impl Screen {
     pub fn add_dock(&mut self, conn: &Connection, window_id: WindowId) {
         let strut_partial = conn.get_strut_partial(&window_id);
-        self.vec.borrow_mut().push(Dock {
+        self.vec.push(Dock {
             window_id,
             strut_partial,
         });
     }
 
     pub fn remove_dock(&mut self, window_id: &WindowId) {
-        self.vec.borrow_mut().retain(|d| &d.window_id != window_id);
+        self.vec.retain(|d| &d.window_id != window_id);
     }
 
     /// Figure out the usable area of the screen based on the STRUT_PARTIAL of
@@ -97,7 +96,6 @@ impl Screen {
     pub fn viewport(&self, screen_width: u32, screen_height: u32) -> Viewport {
         let (left, right, top, bottom) = self
             .vec
-            .borrow()
             .iter()
             .filter_map(|o| o.strut_partial.as_ref())
             .fold((0, 0, 0, 0), |(left, right, top, bottom), s| {
