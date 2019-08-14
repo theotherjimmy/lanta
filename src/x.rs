@@ -196,6 +196,7 @@ impl Connection {
         &self.root
     }
 
+    /// Send the current set of windows and workspaces to any listeners to EHWM updates.
     pub fn update_ewmh_desktops(&self, groups: &Stack<Group>) {
         let group_names = groups.iter().map(|g| g.name());
         ewmh::set_desktop_names(&self.conn, self.screen_idx, group_names);
@@ -207,20 +208,7 @@ impl Connection {
             .map(|w| w.to_x())
             .collect::<Vec<_>>();
         ewmh::set_client_list(&self.conn, self.screen_idx, &windows);
-
-        // Matching the current group on name isn't perfect, but it's good enough for
-        // EWMH.
-        let focused_idx = groups
-            .focused()
-            .and_then(|focused| groups.iter().position(|g| g.name() == focused.name()));
-        match focused_idx {
-            Some(idx) => {
-                ewmh::set_current_desktop(&self.conn, self.screen_idx, idx as u32);
-            }
-            None => {
-                error!("Invariant: failed to get active group index");
-            }
-        };
+        ewmh::set_current_desktop(&self.conn, self.screen_idx, groups.focused_idx() as u32);
     }
 
     pub fn top_level_windows(&self) -> Result<Vec<WindowId>> {
