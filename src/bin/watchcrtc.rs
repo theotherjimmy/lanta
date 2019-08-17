@@ -1,13 +1,13 @@
-use lanta::{Connection, Result, Event};
+use lanta::{Connection, Event, Result};
 
 fn main() -> Result<()> {
     let conn = Connection::connect()?;
     println!("{:?}", conn.list_crtc()?);
     for event in conn.get_event_loop() {
-      match event {
-        Event::CrtcChange(cc) => println!("{:?}", cc),
-        _ => ()
-      }
+        match event {
+            Event::CrtcChange(cc) => println!("{:?}", cc),
+            _ => (),
+        }
     }
     Ok(())
 }

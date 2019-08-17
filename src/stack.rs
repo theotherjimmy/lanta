@@ -22,7 +22,6 @@ pub struct Stack<T> {
     focused: usize,
 }
 
-
 impl<T> Stack<T> {
     pub fn new() -> Stack<T> {
         Stack::default()
@@ -187,8 +186,8 @@ impl<T> From<Vec<T>> for Stack<T> {
 
 #[cfg(test)]
 mod test {
-    use std::cmp::PartialEq;
     use super::Stack;
+    use std::cmp::PartialEq;
 
     impl<T> PartialEq<Vec<T>> for Stack<T>
     where

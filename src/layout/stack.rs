@@ -47,6 +47,5 @@ impl Layout for StackLayout {
             }
             connection.enable_window_tracking(window_id);
         }
-
     }
 }

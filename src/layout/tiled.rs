@@ -90,20 +90,21 @@ impl Layout for ThreeColumn {
             let win_per_col = stack.len() / 3;
             let leftovers = stack.len() - 3 * win_per_col;
             let cols = match leftovers {
-               2 => vec![
-                   stack.slice(0..win_per_col+1),
-                   stack.slice(win_per_col+1..(2*win_per_col) + 1),
-                   stack.slice((2*win_per_col) + 1..stack.len()),
-               ],
-               _ => vec![
-                   stack.slice(0..win_per_col),
-                   stack.slice(win_per_col..(2*win_per_col) + leftovers),
-                   stack.slice((2*win_per_col) + leftovers..stack.len()),
-               ],
+                2 => vec![
+                    stack.slice(0..win_per_col + 1),
+                    stack.slice(win_per_col + 1..(2 * win_per_col) + 1),
+                    stack.slice((2 * win_per_col) + 1..stack.len()),
+                ],
+                _ => vec![
+                    stack.slice(0..win_per_col),
+                    stack.slice(win_per_col..(2 * win_per_col) + leftovers),
+                    stack.slice((2 * win_per_col) + leftovers..stack.len()),
+                ],
             };
-            for (col, slice) in cols.iter().enumerate(){
+            for (col, slice) in cols.iter().enumerate() {
                 let x = viewport.x + self.padding + (col as u32 * (tile_width + self.padding));
-                let tile_height = ((viewport.height - self.padding) / slice.len() as u32) - self.padding;
+                let tile_height =
+                    ((viewport.height - self.padding) / slice.len() as u32) - self.padding;
                 for (row, window_id) in slice.iter().enumerate() {
                     connection.disable_window_tracking(window_id);
                     connection.map_window(window_id);

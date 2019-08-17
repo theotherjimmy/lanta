@@ -197,7 +197,7 @@ impl Group {
         self.perform_layout();
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&WindowId> {
+    pub fn iter(&self) -> impl Iterator<Item = &WindowId> {
         self.stack.iter()
     }
 }

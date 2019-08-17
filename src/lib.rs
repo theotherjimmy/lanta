@@ -127,6 +127,7 @@ pub struct Lanta {
     groups: Stack<Group>,
     screen: Screen,
     crtc: HashMap<Crtc, CrtcInfo>,
+    current_crtc: Stack<Crtc>,
     children: Vec<Child>,
 }
 
@@ -151,6 +152,7 @@ impl Lanta {
             .list_crtc()
             .context("Can't start window manager without a crtc map")?;
         crtc.retain(|_, ci| ci.width > 0 && ci.height > 0);
+        let current_crtc = Stack::from(crtc.keys().cloned().collect::<Vec<_>>());
 
         let mut wm = Lanta {
             keys,
@@ -159,6 +161,7 @@ impl Lanta {
             screen: Screen::default(),
             crtc,
             children: Vec::new(),
+            current_crtc,
         };
 
         // Learn about existing top-level windows.
@@ -174,9 +177,14 @@ impl Lanta {
     }
 
     fn viewport(&self) -> Viewport {
-        let (width, height) = self
-            .connection
-            .get_window_geometry(self.connection.root_window_id());
+        let (width, height) = if let Some(&CrtcInfo { width, height, .. }) =
+            self.current_crtc.focused().and_then(|id| self.crtc.get(id))
+        {
+            (width as u32, height as u32)
+        } else {
+            self.connection
+                .get_window_geometry(self.connection.root_window_id())
+        };
         self.screen.viewport(width, height)
     }
 
@@ -331,8 +339,10 @@ impl Lanta {
 
         let attrs = self.connection.get_window_attributes(&window_id);
         match attrs {
-            Ok(wattrs) => if wattrs.override_redirect() {
-                return;
+            Ok(wattrs) => {
+                if wattrs.override_redirect() {
+                    return;
+                }
             }
             Err(e) => {
                 warn!("Could not get window attrs for {}: {}", window_id, e);
