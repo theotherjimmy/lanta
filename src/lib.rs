@@ -4,6 +4,7 @@
 extern crate log;
 
 use std::cmp;
+use std::collections::HashMap;
 use std::process::Child;
 use std::rc::Rc;
 
@@ -19,11 +20,12 @@ mod x;
 use crate::groups::Group;
 use crate::keys::{KeyCombo, KeyHandlers};
 use crate::layout::Layout;
-use crate::x::{Connection, Event, StrutPartial, WindowId, WindowType};
+use crate::x::{Crtc, CrtcChange, StrutPartial, WindowId, WindowType};
 
 pub use crate::groups::GroupBuilder;
 pub use crate::keys::ModKey;
 pub use crate::stack::Stack;
+pub use crate::x::{Connection, CrtcInfo, Event};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -124,6 +126,7 @@ pub struct Lanta {
     keys: KeyHandlers,
     groups: Stack<Group>,
     screen: Screen,
+    crtc: HashMap<Crtc, CrtcInfo>,
     children: Vec<Child>,
 }
 
@@ -144,11 +147,17 @@ impl Lanta {
                 .collect::<Vec<Group>>(),
         );
 
+        let mut crtc = connection
+            .list_crtc()
+            .context("Can't start window manager without a crtc map")?;
+        crtc.retain(|_, ci| ci.width > 0 && ci.height > 0);
+
         let mut wm = Lanta {
             keys,
             groups,
             connection: connection,
             screen: Screen::default(),
+            crtc,
             children: Vec::new(),
         };
 
@@ -375,6 +384,7 @@ impl Lanta {
                 Event::DestroyNotify(window_id) => self.on_destroy_notify(&window_id),
                 Event::KeyPress(key) => self.on_key_press(key),
                 Event::EnterNotify(window_id) => self.on_enter_notify(&window_id),
+                Event::CrtcChange(change) => self.on_crtc_change(&change),
             }
             self.children = self
                 .children
@@ -434,5 +444,15 @@ impl Lanta {
 
     fn on_enter_notify(&mut self, window_id: &WindowId) {
         self.group_mut().focus(window_id);
+    }
+
+    fn on_crtc_change(&mut self, change: &CrtcChange) {
+        debug!("Crtc's Changed! Before: {:?}", &self.crtc);
+        if change.width > 0 && change.height > 0 {
+            self.crtc.insert(change.crtc, change.into());
+        } else {
+            self.crtc.remove(&change.crtc);
+        }
+        debug!("Crtc's Changed! After: {:?}", &self.crtc);
     }
 }

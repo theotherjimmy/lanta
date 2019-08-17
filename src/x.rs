@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use failure::{format_err, ResultExt};
+use xcb::randr;
 use xcb_util::keysyms::KeySymbols;
 use xcb_util::{ewmh, icccm};
 
@@ -11,6 +12,7 @@ use crate::stack::Stack;
 use crate::Result;
 
 pub use self::ewmh::StrutPartial;
+pub use randr::Crtc;
 
 /// A handle to an X Window.
 #[derive(Debug, PartialEq)]
@@ -87,6 +89,36 @@ macro_rules! atoms {
 
 atoms!(WM_DELETE_WINDOW, WM_PROTOCOLS,);
 
+#[derive(Debug)]
+pub struct CrtcInfo {
+    pub x: i16,
+    pub y: i16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl From<randr::GetCrtcInfoReply> for CrtcInfo {
+    fn from(reply: randr::GetCrtcInfoReply) -> Self {
+        CrtcInfo {
+            x: reply.x(),
+            y: reply.y(),
+            width: reply.width(),
+            height: reply.height(),
+        }
+    }
+}
+
+impl From<&CrtcChange> for CrtcInfo {
+    fn from(change: &CrtcChange) -> Self {
+        CrtcInfo {
+            x: change.x,
+            y: change.y,
+            width: change.width,
+            height: change.height,
+        }
+    }
+}
+
 pub struct Connection {
     conn: ewmh::Connection,
     root: WindowId,
@@ -94,6 +126,7 @@ pub struct Connection {
     atoms: InternedAtoms,
     window_type_lookup: HashMap<xcb::Atom, WindowType>,
     window_state_lookup: HashMap<xcb::Atom, WindowState>,
+    randr_base: u8,
 }
 
 impl Connection {
@@ -108,6 +141,10 @@ impl Connection {
             .nth(screen_idx as usize)
             .ok_or_else(|| format_err!("Invalid screen"))?
             .root();
+        let randr_base = conn
+            .get_extension_data(&mut randr::id())
+            .ok_or_else(|| format_err!("Randr Extension not supported by this display"))?
+            .first_event();
 
         let atoms = InternedAtoms::new(&conn).context("Failed to intern atoms")?;
 
@@ -157,6 +194,7 @@ impl Connection {
             atoms,
             window_type_lookup: types,
             window_state_lookup: state,
+            randr_base,
         })
     }
 
@@ -167,6 +205,28 @@ impl Connection {
 
     fn flush(&self) {
         self.conn.flush();
+    }
+
+    fn crtc_info<'a>(&'a self, crtc: randr::Crtc) -> randr::GetCrtcInfoCookie<'a> {
+        randr::get_crtc_info(&self.conn, crtc, 0)
+    }
+
+    pub fn list_crtc(&self) -> Result<HashMap<randr::Crtc, CrtcInfo>> {
+        let screen_res = randr::get_screen_resources(&self.conn, self.root.to_x()).get_reply()?;
+        let crtc_cookies: Vec<(randr::Crtc, randr::GetCrtcInfoCookie)> = screen_res
+            .crtcs()
+            .into_iter()
+            .map(|&crtc| (crtc, self.crtc_info(crtc)))
+            .collect();
+        // Cookie creation implies that we send a request to the X server. Therefore,
+        // we collect above to send all requests before we try to recieved any results.
+        crtc_cookies
+            .into_iter()
+            .map(|(crtc, cookie)| match cookie.get_reply() {
+                Ok(info) => Ok((crtc, info.into())),
+                Err(e) => Err(e.into()),
+            })
+            .collect()
     }
 
     /// Installs the Connection as a window manager, by registers for
@@ -387,7 +447,43 @@ impl Connection {
     }
 
     pub fn get_event_loop(&self) -> EventLoop<'_> {
+        let _ = randr::select_input(
+            &self.conn,
+            self.root.to_x(),
+            randr::NOTIFY_MASK_CRTC_CHANGE as u16,
+        )
+        .request_check();
+        self.flush();
         EventLoop { connection: self }
+    }
+}
+
+#[derive(Debug)]
+pub struct CrtcChange {
+    pub timestamp: u32,
+    pub window: u32,
+    pub crtc: u32,
+    pub mode: u32,
+    pub rotation: u16,
+    pub x: i16,
+    pub y: i16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl From<randr::CrtcChange> for CrtcChange {
+    fn from(cc: randr::CrtcChange) -> Self {
+        CrtcChange {
+            timestamp: cc.timestamp(),
+            window: cc.window(),
+            crtc: cc.crtc(),
+            mode: cc.mode(),
+            rotation: cc.rotation(),
+            x: cc.x(),
+            y: cc.y(),
+            width: cc.width(),
+            height: cc.height(),
+        }
     }
 }
 
@@ -398,6 +494,7 @@ pub enum Event {
     DestroyNotify(WindowId),
     KeyPress(KeyCombo),
     EnterNotify(WindowId),
+    CrtcChange(CrtcChange),
 }
 
 /// An iterator that yields events from the X event loop.
@@ -423,6 +520,7 @@ impl<'a> Iterator for EventLoop<'a> {
                 .expect("wait_for_event() returned None: IO error?");
 
             unsafe {
+                let randr_notify = self.connection.randr_base + randr::NOTIFY;
                 let propagate = match event.response_type() {
                     xcb::CONFIGURE_REQUEST => self.on_configure_request(xcb::cast_event(&event)),
                     xcb::MAP_REQUEST => self.on_map_request(xcb::cast_event(&event)),
@@ -430,6 +528,7 @@ impl<'a> Iterator for EventLoop<'a> {
                     xcb::DESTROY_NOTIFY => self.on_destroy_notify(xcb::cast_event(&event)),
                     xcb::KEY_PRESS => self.on_key_press(xcb::cast_event(&event)),
                     xcb::ENTER_NOTIFY => self.on_enter_notify(xcb::cast_event(&event)),
+                    n if n == randr_notify => self.on_randr_notify(xcb::cast_event(&event)),
                     _ => None,
                 };
 
@@ -501,5 +600,11 @@ impl<'a> EventLoop<'a> {
 
     fn on_enter_notify(&self, event: &xcb::EnterNotifyEvent) -> Option<Event> {
         Some(Event::EnterNotify(WindowId(event.event())))
+    }
+
+    fn on_randr_notify(&self, event: &randr::NotifyEvent) -> Option<Event> {
+        debug!("{}", event.sub_code());
+        //TODO: match on sub_code
+        Some(Event::CrtcChange(event.u().cc().clone().into()))
     }
 }

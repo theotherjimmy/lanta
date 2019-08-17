@@ -4,9 +4,11 @@ version = "0.1.0"
 authors = ["Michael Killough <michaeljkillough@gmail.com>"]
 edition = "2018"
 
+
 [[bin]]
 name = "lanta"
 doc = false
+
 
 [dependencies]
 fern = "0.5"
@@ -16,9 +18,16 @@ log = "0.4"
 log-panics = { version = "2.0", features = ["with-backtrace"] }
 time = "0.1"
 x11 = "2.18"
-xcb = "0.8"
-xcb-util = { version = "0.2", features = ["ewmh", "icccm", "keysyms"] }
 xdg = "2.2"
+
+[dependencies.xcb]
+version = "0.8"
+features = ["randr"]
+
+[dependencies.xcb-util]
+version = "0.2"
+features = ["ewmh", "icccm", "keysyms"]
+
 
 [profile.release]
 debug = true
