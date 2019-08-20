@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 #[macro_use]
 extern crate log;
 
@@ -62,7 +60,42 @@ pub fn intiailize_logger() -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone)]
+struct Strut {
+    pub left: u32,
+    pub right: u32,
+    pub top: u32,
+    pub bottom: u32,
+    pub left_start_y: u32,
+    pub left_end_y: u32,
+    pub right_start_y: u32,
+    pub right_end_y: u32,
+    pub top_start_x: u32,
+    pub top_end_x: u32,
+    pub bottom_start_x: u32,
+    pub bottom_end_x: u32,
+}
+
+impl Strut {
+    fn from_strut_partial(frm: &StrutPartial) -> Strut {
+        Strut {
+            left: frm.left(),
+            right: frm.right(),
+            top: frm.top(),
+            bottom: frm.bottom(),
+            left_start_y: frm.left_start_y(),
+            left_end_y: frm.left_end_y(),
+            right_start_y: frm.right_start_y(),
+            right_end_y: frm.right_end_y(),
+            top_start_x: frm.top_start_x(),
+            top_end_x: frm.top_end_x(),
+            bottom_start_x: frm.bottom_start_x(),
+            bottom_end_x: frm.bottom_end_x(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Viewport {
     pub x: u32,
     pub y: u32,
@@ -70,20 +103,142 @@ pub struct Viewport {
     pub height: u32,
 }
 
+impl Viewport {
+    fn clone_from_crtc_info(c: &CrtcInfo) -> Viewport {
+        Viewport {
+            x: c.x as u32,
+            y: c.y as u32,
+            width: c.width as u32,
+            height: c.height as u32,
+        }
+    }
+
+    fn without_strut(&self, strut: &Strut) -> Viewport {
+        let mut left = self.x;
+        let mut right = self.x + self.width;
+        let mut top = self.y;
+        let mut bottom = self.y + self.height;
+        if (strut.left > 0) && (strut.left_start_y >= top) && (strut.left_end_y <= bottom) {
+            left = cmp::max(left, strut.left);
+        }
+        if (strut.right > 0) && (strut.right_start_y >= top) && (strut.right_end_y <= bottom) {
+            right = cmp::min(right, strut.right)
+        }
+        if (strut.top > 0) && (strut.top_start_x >= left) && (strut.top_end_x <= right) {
+            top = cmp::min(top, strut.top)
+        }
+        if (strut.bottom > 0) && (strut.bottom_start_x >= left) && (strut.bottom_end_x <= right) {
+            bottom = cmp::min(bottom, strut.bottom)
+        }
+        Viewport {
+            x: left,
+            y: top,
+            width: right - left,
+            height: bottom - top,
+        }
+    }
+}
+
+#[cfg(test)]
+mod viewport {
+    use super::{Strut, Viewport};
+
+    #[test]
+    fn bottom_strut_within_shrinks() {
+        let vp = Viewport {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let strut = Strut {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 1315,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 2559,
+        };
+        assert_eq!(
+            vp.without_strut(&strut),
+            Viewport {
+                x: 0,
+                y: 0,
+                width: 2560,
+                height: 1315,
+            }
+        )
+    }
+
+    #[test]
+    fn bottom_strut_outside_does_not_change() {
+        let vp = Viewport {
+            x: 0,
+            y: 1440,
+            width: 1920,
+            height: 1280,
+        };
+        let strut = Strut {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 1315,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 2559,
+        };
+        assert_eq!(
+            vp.without_strut(&strut),
+            Viewport {
+                x: 0,
+                y: 1440,
+                width: 1920,
+                height: 1280,
+            }
+        )
+    }
+}
+
 struct Dock {
     window_id: WindowId,
     strut_partial: Option<StrutPartial>,
 }
 
-#[derive(Default)]
-struct Screen {
-    docks: Vec<Dock>,
+trait Dockable {
+    fn get_strut(&self) -> Option<Strut>;
 }
 
-impl Screen {
+impl Dockable for Dock {
+    fn get_strut(&self) -> Option<Strut> {
+        self.strut_partial.as_ref().map(Strut::from_strut_partial)
+    }
+}
+
+struct Screen<T> {
+    docks: Vec<T>,
+}
+
+impl<T> Default for Screen<T> {
+    fn default() -> Self {
+      Self { docks: vec![] }
+    }
+}
+
+impl Screen<Dock> {
     pub fn add_dock(&mut self, conn: &Connection, window_id: WindowId) {
         let strut_partial = conn.get_strut_partial(&window_id);
-        self.docks.push(Dock {
+        self.add(Dock {
             window_id,
             strut_partial,
         });
@@ -92,32 +247,84 @@ impl Screen {
     pub fn remove_dock(&mut self, window_id: &WindowId) {
         self.docks.retain(|d| &d.window_id != window_id);
     }
+}
 
+impl<T: Dockable> Screen<T> {
+    pub fn add(&mut self, dock: T) {
+        self.docks.push(dock)
+    }
     /// Figure out the usable area of the screen based on the STRUT_PARTIAL of
     /// all docks.
-    pub fn viewport(&self, screen_width: u32, screen_height: u32) -> Viewport {
-        let (left, right, top, bottom) = self
-            .docks
-            .iter()
-            .filter_map(|o| o.strut_partial.as_ref())
-            .fold((0, 0, 0, 0), |(left, right, top, bottom), s| {
-                // We don't bother looking at the start/end members of the
-                // StrutPartial - treating it more like a Strut.
-                (
-                    cmp::max(left, s.left()),
-                    cmp::max(right, s.right()),
-                    cmp::max(top, s.top()),
-                    cmp::max(bottom, s.bottom()),
-                )
-            });
-        let viewport = Viewport {
-            x: left,
-            y: top,
-            width: screen_width - left - right,
-            height: screen_height - top - bottom,
+    pub fn viewports(&self, mut ports: Vec<Viewport>) -> Vec<Viewport> {
+        let docks: Vec<Strut> = self.docks.iter().filter_map(T::get_strut).collect();
+        for vp in ports.iter_mut() {
+            *vp = docks.iter().fold(*vp, |v, s| v.without_strut(s));
+        }
+        debug!("Calculated Viewport as {:?}", ports);
+        ports
+    }
+}
+
+#[cfg(test)]
+mod screen {
+    use super::{Dockable, Screen, Strut, Viewport};
+
+    struct TestDock(Strut);
+    impl Dockable for TestDock {
+        fn get_strut(&self) -> Option<Strut> {
+            Some(self.0.clone())
+        }
+    }
+
+    #[test]
+    fn top_dock_only_affects_top_monitor() {
+        let vps = vec![
+            Viewport {
+                x: 0,
+                y: 0,
+                width: 2560,
+                height: 1440,
+            },
+            Viewport {
+                x: 0,
+                y: 1440,
+                width: 1920,
+                height: 1280,
+            },
+        ];
+        let strut = Strut {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 1315,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 2559,
         };
-        debug!("Calculated Viewport as {:?}", viewport);
-        viewport
+        let mut screen = Screen::<TestDock>::default();
+        screen.add(TestDock(strut));
+        assert_eq!(
+            screen.viewports(vps),
+            vec![
+                Viewport {
+                    x: 0,
+                    y: 0,
+                    width: 2560,
+                    height: 1315,
+                },
+                Viewport {
+                    x: 0,
+                    y: 1440,
+                    width: 1920,
+                    height: 1280,
+                },
+            ]
+        )
     }
 }
 
@@ -125,7 +332,7 @@ pub struct Lanta {
     connection: Rc<Connection>,
     keys: KeyHandlers,
     groups: Stack<Group>,
-    screen: Screen,
+    screen: Screen<Dock>,
     crtc: HashMap<Crtc, CrtcInfo>,
     current_crtc: Stack<Crtc>,
     children: Vec<Child>,
@@ -176,16 +383,20 @@ impl Lanta {
         Ok(wm)
     }
 
+    fn viewports(&self) -> Stack<Viewport> {
+        let viewports = self
+            .current_crtc
+            .slice(0..self.current_crtc.len())
+            .iter()
+            .filter_map(|id| self.crtc.get(id))
+            .map(Viewport::clone_from_crtc_info)
+            .collect();
+        let drawable = self.screen.viewports(viewports);
+        Stack::from_parts(drawable, self.current_crtc.focused_idx())
+    }
+
     fn viewport(&self) -> Viewport {
-        let (width, height) = if let Some(&CrtcInfo { width, height, .. }) =
-            self.current_crtc.focused().and_then(|id| self.crtc.get(id))
-        {
-            (width as u32, height as u32)
-        } else {
-            self.connection
-                .get_window_geometry(self.connection.root_window_id())
-        };
-        self.screen.viewport(width, height)
+        self.viewports().focused().unwrap().clone()
     }
 
     pub fn wait_on_child(&mut self, cld: Child) {
@@ -459,8 +670,10 @@ impl Lanta {
     fn on_crtc_change(&mut self, change: &CrtcChange) {
         debug!("Crtc's Changed! Before: {:?}", &self.crtc);
         if change.width > 0 && change.height > 0 {
+            self.current_crtc.push(change.crtc);
             self.crtc.insert(change.crtc, change.into());
         } else {
+            self.current_crtc.remove(|c| c == &change.crtc);
             self.crtc.remove(&change.crtc);
         }
         debug!("Crtc's Changed! After: {:?}", &self.crtc);

@@ -164,6 +164,10 @@ impl<T> Stack<T> {
     pub fn slice(&self, range: Range<usize>) -> &[T] {
         &self.windows[range]
     }
+
+    pub fn from_parts(windows: Vec<T>, focused: usize) -> Stack<T> {
+        Stack { windows, focused }
+    }
 }
 
 impl<T> Default for Stack<T> {
