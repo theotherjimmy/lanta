@@ -1,9 +1,9 @@
 extern crate lanta;
 
-use std::rc::Rc;
-use lanta::layout::*;
 use lanta::keysym::*;
-use lanta::{cmd, Lanta, ModKey, Result, GroupBuilder};
+use lanta::layout::*;
+use lanta::{cmd, GroupBuilder, Lanta, ModKey, Result};
+use std::rc::Rc;
 
 macro_rules! spawn {
     ($cmd:expr) => (::lanta::cmd::lazy::spawn(::std::process::Command::new($cmd)));
@@ -28,17 +28,37 @@ fn main() -> Result<()> {
         (vec![modkey], XK_h, cmd::lazy::focus_previous()),
         (vec![modkey, shift], XK_h, cmd::lazy::shuffle_previous()),
         (vec![modkey], XK_Down, cmd::lazy::next_group()),
-        (vec![modkey, shift], XK_Down, cmd::lazy::move_window_to_next_group()),
+        (vec![modkey], XK_Return, cmd::lazy::rotate_crtc()),
+        (
+            vec![modkey, shift],
+            XK_Down,
+            cmd::lazy::move_window_to_next_group(),
+        ),
         (vec![modkey], XK_Up, cmd::lazy::prev_group()),
-        (vec![modkey, shift], XK_Up, cmd::lazy::move_window_to_prev_group()),
+        (
+            vec![modkey, shift],
+            XK_Up,
+            cmd::lazy::move_window_to_prev_group(),
+        ),
         (vec![modkey], XK_Tab, cmd::lazy::layout_next()),
-
         (vec![modkey], XK_c, spawn!("alacritty")),
         (vec![modkey], XK_p, spawn!("rofi", "-show", "run")),
-        (vec![modkey], XK_a, spawn!("amixer", "-q", "set", "Master", "2%-")),
-        (vec![modkey, shift], XK_s, spawn!("slock")),
-        (vec![modkey, shift], XK_a, spawn!("amixer", "-q", "set", "Master", "2%+")),
-        (vec![modkey], XK_q, Rc::new(|_| panic!("exiting")))
+        (
+            vec![modkey],
+            XK_a,
+            spawn!("amixer", "-q", "set", "Master", "2%-"),
+        ),
+        (
+            vec![modkey, shift],
+            XK_s,
+            spawn!("xset", "dpms", "force", "off"),
+        ),
+        (
+            vec![modkey, shift],
+            XK_a,
+            spawn!("amixer", "-q", "set", "Master", "2%+"),
+        ),
+        (vec![modkey], XK_q, Rc::new(|_| panic!("exiting"))),
     ];
 
     let layouts: Vec<Box<dyn Layout>> = vec![

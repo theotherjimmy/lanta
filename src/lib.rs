@@ -60,7 +60,7 @@ pub fn intiailize_logger() -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Strut {
     pub left: u32,
     pub right: u32,
@@ -113,7 +113,7 @@ impl Viewport {
         }
     }
 
-    fn without_strut(&self, strut: &Strut) -> Viewport {
+    fn without_strut(&self, screen_width: u32, screen_height: u32, strut: &Strut) -> Viewport {
         let mut left = self.x;
         let mut right = self.x + self.width;
         let mut top = self.y;
@@ -122,13 +122,13 @@ impl Viewport {
             left = cmp::max(left, strut.left);
         }
         if (strut.right > 0) && (strut.right_start_y >= top) && (strut.right_end_y <= bottom) {
-            right = cmp::min(right, strut.right)
+            right = cmp::min(right, screen_width - strut.right)
         }
         if (strut.top > 0) && (strut.top_start_x >= left) && (strut.top_end_x <= right) {
             top = cmp::min(top, strut.top)
         }
         if (strut.bottom > 0) && (strut.bottom_start_x >= left) && (strut.bottom_end_x <= right) {
-            bottom = cmp::min(bottom, strut.bottom)
+            bottom = cmp::min(bottom, screen_height - strut.bottom)
         }
         Viewport {
             x: left,
@@ -166,12 +166,12 @@ mod viewport {
             bottom_end_x: 2559,
         };
         assert_eq!(
-            vp.without_strut(&strut),
+            vp.without_strut(2560, 2720, &strut),
             Viewport {
                 x: 0,
                 y: 0,
                 width: 2560,
-                height: 1315,
+                height: 1405,
             }
         )
     }
@@ -199,7 +199,7 @@ mod viewport {
             bottom_end_x: 2559,
         };
         assert_eq!(
-            vp.without_strut(&strut),
+            vp.without_strut(2560, 2720, &strut),
             Viewport {
                 x: 0,
                 y: 1440,
@@ -231,7 +231,7 @@ struct Screen<T> {
 
 impl<T> Default for Screen<T> {
     fn default() -> Self {
-      Self { docks: vec![] }
+        Self { docks: vec![] }
     }
 }
 
@@ -257,8 +257,13 @@ impl<T: Dockable> Screen<T> {
     /// all docks.
     pub fn viewports(&self, mut ports: Vec<Viewport>) -> Vec<Viewport> {
         let docks: Vec<Strut> = self.docks.iter().filter_map(T::get_strut).collect();
+        debug!("Docks: {:?}", docks);
+        let width = ports.iter().map(|v| v.x + v.width).fold(0, cmp::max);
+        let height = ports.iter().map(|v| v.y + v.height).fold(0, cmp::max);
         for vp in ports.iter_mut() {
-            *vp = docks.iter().fold(*vp, |v, s| v.without_strut(s));
+            *vp = docks
+                .iter()
+                .fold(*vp, |v, s| v.without_strut(width, height, s));
         }
         debug!("Calculated Viewport as {:?}", ports);
         ports
@@ -315,7 +320,7 @@ mod screen {
                     x: 0,
                     y: 0,
                     width: 2560,
-                    height: 1315,
+                    height: 1405,
                 },
                 Viewport {
                     x: 0,
@@ -360,7 +365,6 @@ impl Lanta {
             .context("Can't start window manager without a crtc map")?;
         crtc.retain(|_, ci| ci.width > 0 && ci.height > 0);
         let current_crtc = Stack::from(crtc.keys().cloned().collect::<Vec<_>>());
-
         let mut wm = Lanta {
             keys,
             groups,
@@ -397,6 +401,15 @@ impl Lanta {
 
     fn viewport(&self) -> Viewport {
         self.viewports().focused().unwrap().clone()
+    }
+
+    pub fn rotate_crtc(&mut self) {
+        self.current_crtc.focus_next_wrap();
+
+        // TODO: This should force a redraw; find a better way to do this
+        self.group_mut().deactivate();
+        let viewport = self.viewport();
+        self.group_mut().activate(viewport);
     }
 
     pub fn wait_on_child(&mut self, cld: Child) {
@@ -668,14 +681,22 @@ impl Lanta {
     }
 
     fn on_crtc_change(&mut self, change: &CrtcChange) {
-        debug!("Crtc's Changed! Before: {:?}", &self.crtc);
+        debug!(
+            "Crtc's Changed! Before: {:?}, {:?}",
+            &self.crtc, &self.current_crtc
+        );
         if change.width > 0 && change.height > 0 {
-            self.current_crtc.push(change.crtc);
+            if !self.crtc.contains_key(&change.crtc) {
+                self.current_crtc.push(change.crtc);
+            }
             self.crtc.insert(change.crtc, change.into());
         } else {
             self.current_crtc.remove(|c| c == &change.crtc);
             self.crtc.remove(&change.crtc);
         }
-        debug!("Crtc's Changed! After: {:?}", &self.crtc);
+        debug!(
+            "Crtc's Changed! After: {:?}, {:?}",
+            &self.crtc, &self.current_crtc
+        );
     }
 }

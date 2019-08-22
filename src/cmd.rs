@@ -18,6 +18,14 @@ pub mod lazy {
 
     use super::Command;
 
+    /// Rotate the active Crtc
+    pub fn rotate_crtc() -> Command {
+        Rc::new(|ref mut wm| {
+            wm.rotate_crtc();
+            Ok(())
+        })
+    }
+
     /// Closes the currently focused window.
     pub fn close_focused_window() -> Command {
         Rc::new(|ref mut wm| {
