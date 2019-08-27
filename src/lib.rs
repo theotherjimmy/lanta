@@ -336,7 +336,8 @@ mod screen {
 pub struct Lanta {
     connection: Rc<Connection>,
     keys: KeyHandlers,
-    groups: Stack<Group>,
+    groups: Vec<Group>,
+    groups_crtc: HashMap<Crtc, usize>,
     screen: Screen<Dock>,
     crtc: HashMap<Crtc, CrtcInfo>,
     current_crtc: Stack<Crtc>,
@@ -353,21 +354,27 @@ impl Lanta {
         let connection = Rc::new(Connection::connect()?);
         connection.install_as_wm(&keys)?;
 
-        let groups = Stack::from(
-            groups
-                .into_iter()
-                .map(|group: GroupBuilder| group.build(connection.clone(), layouts.to_owned()))
-                .collect::<Vec<Group>>(),
-        );
-
+        let groups = groups
+            .into_iter()
+            .map(|group: GroupBuilder| group.build(connection.clone(), layouts.to_owned()))
+            .collect::<Vec<Group>>()
+            .into();
         let mut crtc = connection
             .list_crtc()
             .context("Can't start window manager without a crtc map")?;
         crtc.retain(|_, ci| ci.width > 0 && ci.height > 0);
         let current_crtc = Stack::from(crtc.keys().cloned().collect::<Vec<_>>());
+        let groups_crtc = crtc
+            .keys()
+            .cloned()
+            .into_iter()
+            .zip(0..current_crtc.len())
+            .collect::<HashMap<_, _>>();
+        debug!("starting with groups_crtc: {:?}", groups_crtc);
         let mut wm = Lanta {
             keys,
             groups,
+            groups_crtc,
             connection: connection,
             screen: Screen::default(),
             crtc,
@@ -380,14 +387,44 @@ impl Lanta {
         for window in existing_windows {
             wm.manage_window(window);
         }
-        let viewport = wm.viewport();
-        wm.group_mut().activate(viewport);
-        wm.connection.update_ewmh_desktops(&wm.groups);
+        wm.activate_current_groups();
+        wm.update_ewmh_desktops();
 
         Ok(wm)
     }
 
-    fn viewports(&self) -> Stack<Viewport> {
+    fn deactivate_all_groups(&mut self) {
+        for group in self.groups.iter_mut() {
+            group.deactivate();
+        }
+    }
+
+    fn activate_current_groups(&mut self) {
+        for (crtc, viewport) in self.viewports() {
+            let Lanta {ref groups_crtc, ref mut groups, ..} = self;
+            if let Some(group) = groups_crtc
+                .get(&crtc)
+                .and_then(|gidx| groups.get_mut(*gidx))
+            {
+                group.activate(viewport);
+            }
+        }
+    }
+
+    fn update_ewmh_desktops(&self) {
+        let current_group = self
+            .group_idx()
+            .expect("Lanta always maintains an active group.");
+        self.connection
+            .update_ewmh_desktops(&self.groups, current_group)
+    }
+
+    fn group_idx(&self) -> Option<usize> {
+        let focused = self.current_crtc.focused()?;
+        self.groups_crtc.get(focused).cloned()
+    }
+
+    fn viewports(&self) -> Vec<(Crtc, Viewport)> {
         let viewports = self
             .current_crtc
             .slice(0..self.current_crtc.len())
@@ -396,20 +433,20 @@ impl Lanta {
             .map(Viewport::clone_from_crtc_info)
             .collect();
         let drawable = self.screen.viewports(viewports);
-        Stack::from_parts(drawable, self.current_crtc.focused_idx())
-    }
-
-    fn viewport(&self) -> Viewport {
-        self.viewports().focused().unwrap().clone()
+        self.current_crtc
+            .slice(0..self.current_crtc.len())
+            .into_iter()
+            .cloned()
+            .zip(drawable.into_iter())
+            .collect()
     }
 
     pub fn rotate_crtc(&mut self) {
         self.current_crtc.focus_next_wrap();
 
         // TODO: This should force a redraw; find a better way to do this
-        self.group_mut().deactivate();
-        let viewport = self.viewport();
-        self.group_mut().activate(viewport);
+        self.deactivate_all_groups();
+        self.activate_current_groups();
     }
 
     pub fn wait_on_child(&mut self, cld: Child) {
@@ -417,13 +454,44 @@ impl Lanta {
     }
 
     pub fn group(&self) -> &Group {
-        self.groups.focused().expect("Invariant: No active group!")
+        let group_idx = self
+            .group_idx()
+            .expect("The focused screen must have an active group");
+        self.groups
+            .get(group_idx)
+            .expect("The focused group must exist")
     }
 
     pub fn group_mut(&mut self) -> &mut Group {
+        let group_idx = self
+            .group_idx()
+            .expect("The focused screen must have an active group");
         self.groups
-            .focused_mut()
-            .expect("Invariant: No active group!")
+            .get_mut(group_idx)
+            .expect("The focused group must exist")
+    }
+
+    fn focus_idx(&mut self, new_idx: usize) {
+        if new_idx >= self.groups.len() {
+            return;
+        }
+        let focused = self
+            .current_crtc
+            .focused()
+            .expect("The focused screen must have an active group");
+        let after_insert = self.groups_crtc.get(focused).cloned();
+        match after_insert {
+            Some(old_idx) if old_idx != new_idx => {
+                for gid in self.groups_crtc.values_mut() {
+                    if *gid == new_idx {
+                        *gid = old_idx;
+                    }
+                }
+            }
+            Some(_) | None => (),
+        };
+        self.groups_crtc.insert(*focused, new_idx);
+        self.update_ewmh_desktops();
     }
 
     pub fn switch_group<'a, S>(&'a mut self, name: S)
@@ -437,29 +505,35 @@ impl Lanta {
             return;
         }
 
-        self.group_mut().deactivate();
-        self.groups.focus(|group| group.name() == name);
-        let viewport = self.viewport();
-        self.group_mut().activate(viewport);
-        self.connection.update_ewmh_desktops(&self.groups);
+        match self.groups.iter().position(|group| group.name() == name) {
+            Some(idx) => {
+                self.deactivate_all_groups();
+                self.group_mut().deactivate();
+                self.focus_idx(idx);
+                self.activate_current_groups();
+            }
+            None => (),
+        }
     }
 
     pub fn next_group(&mut self) {
-        info!("next group");
-        self.group_mut().deactivate();
-        self.groups.focus_next();
-        let viewport = self.viewport();
-        self.group_mut().activate(viewport);
-        self.connection.update_ewmh_desktops(&self.groups);
+        self.deactivate_all_groups();
+        let current = self.group_idx().unwrap();
+        self.focus_idx(current + 1);
+        self.activate_current_groups();
     }
 
     pub fn prev_group(&mut self) {
         info!("prev group");
-        self.group_mut().deactivate();
-        self.groups.focus_previous();
-        let viewport = self.viewport();
-        self.group_mut().activate(viewport);
-        self.connection.update_ewmh_desktops(&self.groups);
+        self.deactivate_all_groups();
+        let current = self.group_idx().unwrap();
+        match current.checked_sub(1) {
+            Some(new_idx) => {
+                self.focus_idx(new_idx);
+            }
+            None => (),
+        };
+        self.activate_current_groups();
     }
 
     /// Move the focused window from the active group to another named group.
@@ -496,43 +570,19 @@ impl Lanta {
 
     pub fn move_focused_to_next_group(&mut self) {
         if let Some(removed) = self.group_mut().remove_focused() {
-            self.group_mut().deactivate();
-            self.groups.focus_next();
-            let new_group = self.groups.focused_mut();
-            match new_group {
-                Some(new_group) => {
-                    new_group.add_window(removed);
-                }
-                None => {
-                    // It would be nice to put the window back in its group (or avoid taking it out
-                    // of its group until we've checked the new group exists), but it's difficult
-                    // to do this while keeping the borrow checker happy.
-                    error!("Moved window {} to non-existent group", removed);
-                }
-            }
-            let viewport = self.viewport();
-            self.group_mut().activate(viewport);
+            self.deactivate_all_groups();
+            self.next_group();
+            self.group_mut().add_window(removed);
+            self.activate_current_groups();
         }
     }
 
     pub fn move_focused_to_prev_group(&mut self) {
         if let Some(removed) = self.group_mut().remove_focused() {
-            self.group_mut().deactivate();
-            self.groups.focus_previous();
-            let new_group = self.groups.focused_mut();
-            match new_group {
-                Some(new_group) => {
-                    new_group.add_window(removed);
-                }
-                None => {
-                    // It would be nice to put the window back in its group (or avoid taking it out
-                    // of its group until we've checked the new group exists), but it's difficult
-                    // to do this while keeping the borrow checker happy.
-                    error!("Moved window {} to non-existent group", removed);
-                }
-            }
-            let viewport = self.viewport();
-            self.group_mut().activate(viewport);
+            self.deactivate_all_groups();
+            self.prev_group();
+            self.group_mut().add_window(removed);
+            self.activate_current_groups();
         }
     }
 
@@ -583,8 +633,7 @@ impl Lanta {
         if dock {
             self.connection.map_window(&window_id);
             self.screen.add_dock(&self.connection, window_id);
-            let viewport = self.viewport();
-            self.group_mut().update_viewport(viewport);
+            self.activate_current_groups();
         } else {
             self.connection.enable_window_tracking(&window_id);
             self.group_mut().add_window(window_id);
@@ -603,8 +652,7 @@ impl Lanta {
         self.screen.remove_dock(window_id);
 
         // The viewport may have changed.
-        let viewport = self.viewport();
-        self.group_mut().update_viewport(viewport);
+        self.activate_current_groups()
     }
 
     pub fn run(mut self) {

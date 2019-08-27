@@ -8,7 +8,6 @@ use xcb_util::{ewmh, icccm};
 
 use crate::groups::Group;
 use crate::keys::{KeyCombo, KeyHandlers};
-use crate::stack::Stack;
 use crate::Result;
 
 pub use self::ewmh::StrutPartial;
@@ -257,7 +256,7 @@ impl Connection {
     }
 
     /// Send the current set of windows and workspaces to any listeners to EHWM updates.
-    pub fn update_ewmh_desktops(&self, groups: &Stack<Group>) {
+    pub fn update_ewmh_desktops(&self, groups: &[Group], focused: usize) {
         let group_names = groups.iter().map(|g| g.name());
         ewmh::set_desktop_names(&self.conn, self.screen_idx, group_names);
         ewmh::set_number_of_desktops(&self.conn, self.screen_idx, groups.len() as u32);
@@ -268,7 +267,7 @@ impl Connection {
             .map(|w| w.to_x())
             .collect::<Vec<_>>();
         ewmh::set_client_list(&self.conn, self.screen_idx, &windows);
-        ewmh::set_current_desktop(&self.conn, self.screen_idx, groups.focused_idx() as u32);
+        ewmh::set_current_desktop(&self.conn, self.screen_idx, focused as u32);
     }
 
     pub fn top_level_windows(&self) -> Result<Vec<WindowId>> {
