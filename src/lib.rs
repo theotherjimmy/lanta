@@ -2,7 +2,8 @@
 extern crate log;
 
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Entry;
 use std::process::Child;
 use std::rc::Rc;
 
@@ -333,13 +334,14 @@ mod screen {
     }
 }
 
+type GroupId = usize;
+
 pub struct Lanta {
     connection: Rc<Connection>,
     keys: KeyHandlers,
     groups: Vec<Group>,
-    groups_crtc: HashMap<Crtc, usize>,
+    crtc: HashMap<Crtc, (CrtcInfo, GroupId)>,
     screen: Screen<Dock>,
-    crtc: HashMap<Crtc, CrtcInfo>,
     current_crtc: Stack<Crtc>,
     children: Vec<Child>,
 }
@@ -362,19 +364,17 @@ impl Lanta {
         let mut crtc = connection
             .list_crtc()
             .context("Can't start window manager without a crtc map")?;
-        crtc.retain(|_, ci| ci.width > 0 && ci.height > 0);
-        let current_crtc = Stack::from(crtc.keys().cloned().collect::<Vec<_>>());
-        let groups_crtc = crtc
-            .keys()
-            .cloned()
+        crtc.retain(|(_, ci)| ci.width > 0 && ci.height > 0);
+        let current_crtc = Stack::from(crtc.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>());
+        let crtc = crtc
             .into_iter()
             .zip(0..current_crtc.len())
-            .collect::<HashMap<_, _>>();
-        debug!("starting with groups_crtc: {:?}", groups_crtc);
+            .map(|((crtc, info), grp)| (crtc, (info, grp)))
+            .collect();
+        debug!("starting with crtc: {:?}", crtc);
         let mut wm = Lanta {
             keys,
             groups,
-            groups_crtc,
             connection: connection,
             screen: Screen::default(),
             crtc,
@@ -400,15 +400,22 @@ impl Lanta {
     }
 
     fn activate_current_groups(&mut self) {
-        for (crtc, viewport) in self.viewports() {
-            let Lanta {ref groups_crtc, ref mut groups, ..} = self;
-            if let Some(group) = groups_crtc
-                .get(&crtc)
-                .and_then(|gidx| groups.get_mut(*gidx))
-            {
+        let vps = self.viewports();
+        let Lanta {
+            ref crtc,
+            ref mut groups,
+            ..
+        } = self;
+        for ((_info, grp_id), viewport) in crtc.values().zip(vps.into_iter()) {
+            if let Some(group) = groups.get_mut(*grp_id) {
                 group.activate(viewport);
             }
         }
+    }
+
+    fn find_next_unallocated_group(&self) -> GroupId {
+        let gidx_set = self.crtc.values().map(|(_info, gid)| gid.clone()).collect::<HashSet<_>>();
+        (0..).into_iter().find(|gid| ! gidx_set.contains(gid)).unwrap()
     }
 
     fn update_ewmh_desktops(&self) {
@@ -421,24 +428,16 @@ impl Lanta {
 
     fn group_idx(&self) -> Option<usize> {
         let focused = self.current_crtc.focused()?;
-        self.groups_crtc.get(focused).cloned()
+        self.crtc.get(focused).map(|(_info, idx)| idx.clone())
     }
 
-    fn viewports(&self) -> Vec<(Crtc, Viewport)> {
+    fn viewports(&mut self) -> Vec<Viewport> {
         let viewports = self
-            .current_crtc
-            .slice(0..self.current_crtc.len())
-            .iter()
-            .filter_map(|id| self.crtc.get(id))
-            .map(Viewport::clone_from_crtc_info)
+            .crtc
+            .values()
+            .map(|(info, _)| Viewport::clone_from_crtc_info(info))
             .collect();
-        let drawable = self.screen.viewports(viewports);
-        self.current_crtc
-            .slice(0..self.current_crtc.len())
-            .into_iter()
-            .cloned()
-            .zip(drawable.into_iter())
-            .collect()
+        self.screen.viewports(viewports)
     }
 
     pub fn rotate_crtc(&mut self) {
@@ -479,10 +478,10 @@ impl Lanta {
             .current_crtc
             .focused()
             .expect("The focused screen must have an active group");
-        let after_insert = self.groups_crtc.get(focused).cloned();
+        let after_insert = self.crtc.get(focused).map(|(_info, gidx)| gidx.clone());
         match after_insert {
             Some(old_idx) if old_idx != new_idx => {
-                for gid in self.groups_crtc.values_mut() {
+                for (_info, ref mut gid) in self.crtc.values_mut() {
                     if *gid == new_idx {
                         *gid = old_idx;
                     }
@@ -490,7 +489,9 @@ impl Lanta {
             }
             Some(_) | None => (),
         };
-        self.groups_crtc.insert(*focused, new_idx);
+        if let Some((_info, idx)) = self.crtc.get_mut(focused) {
+            *idx = new_idx;
+        }
         self.update_ewmh_desktops();
     }
 
@@ -737,7 +738,15 @@ impl Lanta {
             if !self.crtc.contains_key(&change.crtc) {
                 self.current_crtc.push(change.crtc);
             }
-            self.crtc.insert(change.crtc, change.into());
+            let gidx = self.find_next_unallocated_group();
+            match self.crtc.entry(change.crtc) {
+                Entry::Vacant(v) => {
+                    v.insert((change.into(), gidx));
+                },
+                Entry::Occupied(ref mut o) => {
+                    o.get_mut().0 = change.into();
+                }
+            }
         } else {
             self.current_crtc.remove(|c| c == &change.crtc);
             self.crtc.remove(&change.crtc);

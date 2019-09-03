@@ -210,7 +210,7 @@ impl Connection {
         randr::get_crtc_info(&self.conn, crtc, 0)
     }
 
-    pub fn list_crtc(&self) -> Result<HashMap<randr::Crtc, CrtcInfo>> {
+    pub fn list_crtc(&self) -> Result<Vec<(randr::Crtc, CrtcInfo)>> {
         let screen_res = randr::get_screen_resources(&self.conn, self.root.to_x()).get_reply()?;
         let crtc_cookies: Vec<(randr::Crtc, randr::GetCrtcInfoCookie)> = screen_res
             .crtcs()
