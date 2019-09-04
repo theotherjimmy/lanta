@@ -1,6 +1,6 @@
-use crate::layout::Layout;
+use crate::layout::{Layout, MappedWindow};
 use crate::stack::Stack;
-use crate::x::{Connection, WindowId};
+use crate::x::WindowId;
 use crate::Viewport;
 
 #[derive(Clone)]
@@ -23,29 +23,18 @@ impl Layout for StackLayout {
         &self.name
     }
 
-    fn layout(&self, connection: &Connection, viewport: &Viewport, stack: &Stack<WindowId>) {
-        if stack.is_empty() {
-            return;
-        }
-
-        // A non-empty `Stack` is guaranteed to have something focused.
-        let focused_id = stack.focused().unwrap();
-
-        for window_id in stack.iter() {
-            connection.disable_window_tracking(focused_id);
-            if focused_id == window_id {
-                connection.map_window(focused_id);
-                connection.configure_window(
-                    focused_id,
-                    viewport.x + self.padding,
-                    viewport.y + self.padding,
-                    viewport.width - (self.padding * 2),
-                    viewport.height - (self.padding * 2),
-                );
-            } else {
-                connection.unmap_window(window_id);
+    fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow> {
+        match stack.focused() {
+            Some(&id) => {
+                let vp = Viewport{
+                    x: viewport.x + self.padding,
+                    y: viewport.y + self.padding,
+                    width: viewport.x - (self.padding * 2),
+                    height: viewport.y - (self.padding * 2),
+                };
+                vec![MappedWindow{ vp, id }]
             }
-            connection.enable_window_tracking(window_id);
+            None => Default::default()
         }
     }
 }

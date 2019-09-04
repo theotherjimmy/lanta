@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::stack::Stack;
-use crate::x::{Connection, WindowId};
+use crate::x::WindowId;
 use crate::Viewport;
 
 mod stack;
@@ -24,9 +24,14 @@ where
     }
 }
 
+pub struct MappedWindow {
+    pub id: WindowId,
+    pub vp: Viewport,
+}
+
 pub trait Layout: LayoutClone {
     fn name(&self) -> &str;
-    fn layout(&self, connection: &Connection, viewport: &Viewport, stack: &Stack<WindowId>);
+    fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow>;
 }
 
 impl Clone for Box<dyn Layout> {

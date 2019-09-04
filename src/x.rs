@@ -14,7 +14,7 @@ pub use self::ewmh::StrutPartial;
 pub use randr::Crtc;
 
 /// A handle to an X Window.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct WindowId(xcb::Window);
 
 impl WindowId {

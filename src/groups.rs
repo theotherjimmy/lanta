@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::Viewport;
-use crate::layout::Layout;
+use crate::layout::{Layout, MappedWindow};
 use crate::stack::Stack;
 use crate::x::{Connection, WindowId};
 
@@ -80,11 +81,27 @@ impl Group {
         }
 
         if let Some(layout) = self.layouts.focused() {
-            layout.layout(&self.connection, &self.viewport, &self.stack)
+            let to_map = layout.layout(&self.viewport, &self.stack);
+            let mapped_ids = to_map.iter().map(|MappedWindow { id, .. }| id).collect::<HashSet<_>>();
+            for id in self.stack.iter() {
+                if !mapped_ids.contains(id) {
+                    self.connection.disable_window_tracking(id);
+                    self.connection.unmap_window(id);
+                    self.connection.enable_window_tracking(id);
+                }
+            }
+            for MappedWindow { id, vp } in &to_map {
+                self.connection
+                    .configure_window(id, vp.x, vp.y, vp.width, vp.height);
+            }
         }
 
-        // Tell X to focus the focused window for this group, or to unset
-        // it's focus if we have no windows.
+        self.focus_active_window();
+    }
+
+    /// Focus the focused window for this group, or to unset the focus when
+    /// we have no windows.
+    pub fn focus_active_window(&self) {
         match self.stack.focused() {
             Some(window_id) => self.connection.focus_window(window_id),
             None => self.connection.focus_nothing(),
