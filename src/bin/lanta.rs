@@ -2,7 +2,7 @@ extern crate lanta;
 
 use lanta::keysym::*;
 use lanta::layout::*;
-use lanta::{cmd, GroupBuilder, Lanta, ModKey, Result};
+use lanta::{cmd, Group, Lanta, ModKey, Result};
 use std::rc::Rc;
 
 macro_rules! spawn {
@@ -66,12 +66,12 @@ fn main() -> Result<()> {
         Box::new(ThreeColumn::new("3 column", padding)),
     ];
     let groups = vec![
-        GroupBuilder::new("\u{2645}", "stack"),
-        GroupBuilder::new("\u{2646}", "3 column"),
-        GroupBuilder::new("\u{2647}", "3 column"),
-        GroupBuilder::new("\u{2648}", "3 column"),
-        GroupBuilder::new("\u{2649}", "3 column"),
-        GroupBuilder::new("\u{264a}", "3 column"),
+        Group::new("\u{2645}", "stack", &layouts ),
+        Group::new("\u{2646}", "3 column", &layouts ),
+        Group::new("\u{2647}", "3 column", &layouts ),
+        Group::new("\u{2648}", "3 column", &layouts ),
+        Group::new("\u{2649}", "3 column", &layouts ),
+        Group::new("\u{264a}", "3 column", &layouts ),
     ];
 
     lanta::intiailize_logger()?;

@@ -29,8 +29,8 @@ impl Layout for StackLayout {
                 let vp = Viewport{
                     x: viewport.x + self.padding,
                     y: viewport.y + self.padding,
-                    width: viewport.x - (self.padding * 2),
-                    height: viewport.y - (self.padding * 2),
+                    width: viewport.width - (self.padding * 2),
+                    height: viewport.height - (self.padding * 2),
                 };
                 vec![MappedWindow{ vp, id }]
             }

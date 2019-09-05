@@ -24,6 +24,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct MappedWindow {
     pub id: WindowId,
     pub vp: Viewport,

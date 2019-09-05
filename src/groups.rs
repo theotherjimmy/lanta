@@ -1,220 +1,99 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use super::Viewport;
 use crate::layout::{Layout, MappedWindow};
 use crate::stack::Stack;
 use crate::x::{Connection, WindowId};
 
-#[derive(Clone)]
-pub struct GroupBuilder {
-    name: String,
-    default_layout: String,
-}
-
-impl GroupBuilder {
-    pub fn new<S1, S2>(name: S1, default_layout: S2) -> GroupBuilder
-    where
-        S1: Into<String>,
-        S2: Into<String>,
-    {
-        GroupBuilder {
-            name: name.into(),
-            default_layout: default_layout.into(),
-        }
-    }
-
-    pub fn build(self, connection: Rc<Connection>, layouts: Vec<Box<dyn Layout>>) -> Group {
-        let mut layouts_stack = Stack::from(layouts);
-        layouts_stack.focus(|layout| layout.name() == self.default_layout);
-
-        Group {
-            connection,
-            name: self.name.clone(),
-            active: false,
-            stack: Stack::new(),
-            layouts: layouts_stack,
-            viewport: Viewport::default(),
-        }
-    }
-}
+type LayoutId = usize;
 
 pub struct Group {
-    name: String,
-    connection: Rc<Connection>,
-    active: bool,
-    stack: Stack<WindowId>,
-    layouts: Stack<Box<dyn Layout>>,
-    viewport: Viewport,
+    name: Cow<'static, str>,
+    pub layout_id: LayoutId,
+    pub focused_window: Option<WindowId>,
 }
 
 impl Group {
+    pub fn new<S>(name: S, default_layout: &str, layouts: &[Box<dyn Layout>]) -> Group
+    where
+        S: Into<Cow<'static, str>>,
+    {
+        let layout_id = layouts
+            .iter()
+            .position(|layout| layout.name() == default_layout)
+            .unwrap_or_default();
+        Group {
+            name: name.into(),
+            layout_id,
+            focused_window: None,
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
+}
 
-    pub fn activate(&mut self, viewport: Viewport) {
-        info!("Activating group: {}", self.name());
-        self.active = true;
-        self.viewport = viewport;
-        self.perform_layout();
+pub struct GroupRef<'a> {
+    connection: &'a Connection,
+    windows: Stack<WindowId>,
+    layout: &'a dyn Layout,
+}
+
+impl<'a> GroupRef<'a> {
+    pub fn new(
+        connection: &'a Connection,
+        windows: Stack<WindowId>,
+        layout: &'a dyn Layout,
+    ) -> GroupRef<'a> {
+        GroupRef {
+            connection,
+            windows,
+            layout,
+        }
     }
 
-    pub fn update_viewport(&mut self, viewport: Viewport) {
-        self.viewport = viewport;
-        self.perform_layout();
+    pub fn map_to_viewport(&self, viewport: &Viewport) {
+        self.perform_layout(viewport);
     }
 
-    pub fn deactivate(&mut self) {
-        info!("Deactivating group: {}", self.name());
-        for window_id in self.stack.iter() {
+    pub fn unmap(&self) {
+        for window_id in self.windows.iter() {
             self.connection.disable_window_tracking(window_id);
             self.connection.unmap_window(window_id);
             self.connection.enable_window_tracking(window_id);
         }
-        self.active = false;
     }
 
-    fn perform_layout(&mut self) {
-        if !self.active {
-            return;
-        }
-
-        if let Some(layout) = self.layouts.focused() {
-            let to_map = layout.layout(&self.viewport, &self.stack);
-            let mapped_ids = to_map.iter().map(|MappedWindow { id, .. }| id).collect::<HashSet<_>>();
-            for id in self.stack.iter() {
-                if !mapped_ids.contains(id) {
-                    self.connection.disable_window_tracking(id);
-                    self.connection.unmap_window(id);
-                    self.connection.enable_window_tracking(id);
-                }
-            }
-            for MappedWindow { id, vp } in &to_map {
-                self.connection
-                    .configure_window(id, vp.x, vp.y, vp.width, vp.height);
+    fn perform_layout(&self, vp: &Viewport) {
+        let to_map = self.layout.layout(vp, &self.windows);
+        let mapped_ids = to_map
+            .iter()
+            .map(|MappedWindow { id, .. }| id)
+            .collect::<HashSet<_>>();
+        for id in self.windows.iter() {
+            if !mapped_ids.contains(id) {
+                self.connection.disable_window_tracking(id);
+                self.connection.unmap_window(id);
+                self.connection.enable_window_tracking(id);
             }
         }
-
-        self.focus_active_window();
+        for MappedWindow { id, vp } in &to_map {
+            self.connection.disable_window_tracking(id);
+            self.connection
+                .configure_window(id, vp.x, vp.y, vp.width, vp.height);
+            self.connection.map_window(id);
+            self.connection.enable_window_tracking(id);
+        }
     }
 
     /// Focus the focused window for this group, or to unset the focus when
     /// we have no windows.
     pub fn focus_active_window(&self) {
-        match self.stack.focused() {
+        match self.windows.focused() {
             Some(window_id) => self.connection.focus_window(window_id),
             None => self.connection.focus_nothing(),
         }
-    }
-
-    pub fn add_window(&mut self, window_id: WindowId) {
-        info!("Adding window to group {}: {}", self.name(), window_id);
-        self.stack.push(window_id);
-        self.perform_layout();
-    }
-
-    pub fn remove_window(&mut self, window_id: &WindowId) -> WindowId {
-        info!("Removing window from group {}: {}", self.name(), window_id);
-        let removed = self.stack.remove(|w| w == window_id);
-        self.perform_layout();
-        removed
-    }
-
-    pub fn remove_focused(&mut self) -> Option<WindowId> {
-        info!(
-            "Removing focused window from group {}: {:?}",
-            self.name(),
-            self.stack.focused()
-        );
-        let removed = self.stack.remove_focused();
-        self.perform_layout();
-        removed.map(|window| {
-            self.connection.disable_window_tracking(&window);
-            self.connection.unmap_window(&window);
-            self.connection.enable_window_tracking(&window);
-            window
-        })
-    }
-
-    pub fn contains(&self, window_id: &WindowId) -> bool {
-        self.stack.iter().any(|w| w == window_id)
-    }
-
-    pub fn focus(&mut self, window_id: &WindowId) {
-        info!("Focusing window in group {}: {}", self.name(), window_id);
-        self.stack.focus(|id| id == window_id);
-        self.perform_layout();
-    }
-
-    pub fn close_focused(&self) {
-        if let Some(window_id) = self.stack.focused() {
-            self.connection.close_window(window_id);
-        }
-    }
-
-    pub fn focus_next(&mut self) {
-        self.stack.focus_next();
-        info!(
-            "Focusing next window in group {}: {:?}",
-            self.name(),
-            self.stack.focused()
-        );
-        self.perform_layout();
-    }
-
-    pub fn focus_previous(&mut self) {
-        self.stack.focus_previous();
-        info!(
-            "Focusing previous window in group {}: {:?}",
-            self.name(),
-            self.stack.focused()
-        );
-        self.perform_layout();
-    }
-
-    pub fn shuffle_next(&mut self) {
-        info!(
-            "Shuffling focused window to next position in group {}: {:?}",
-            self.name(),
-            self.stack.focused()
-        );
-        self.stack.shuffle_next();
-        self.perform_layout();
-    }
-
-    pub fn shuffle_previous(&mut self) {
-        info!(
-            "Shuffling focused window to previous position in group {}: {:?}",
-            self.name(),
-            self.stack.focused()
-        );
-        self.stack.shuffle_previous();
-        self.perform_layout();
-    }
-
-    pub fn layout_next(&mut self) {
-        self.layouts.focus_next_wrap();
-        info!(
-            "Switching to next layout in group {}: {:?}",
-            self.name(),
-            self.layouts.focused()
-        );
-        self.perform_layout();
-    }
-
-    pub fn layout_previous(&mut self) {
-        self.layouts.focus_next();
-        info!(
-            "Switching to previous layout in group {}: {:?}",
-            self.name(),
-            self.layouts.focused()
-        );
-        self.layouts.focus_previous();
-        self.perform_layout();
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &WindowId> {
-        self.stack.iter()
     }
 }

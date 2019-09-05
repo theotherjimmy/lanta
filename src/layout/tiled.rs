@@ -63,7 +63,9 @@ impl Layout for ThreeColumn {
     }
 
     fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow> {
-        if stack.len() < 3 {
+        if stack.len() == 0 {
+            Default::default()
+        } else if stack.len() < 3 {
             let tile_width = ((viewport.width - self.padding) / stack.len() as u32) - self.padding;
 
             stack

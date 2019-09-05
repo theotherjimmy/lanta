@@ -29,7 +29,7 @@ pub mod lazy {
     /// Closes the currently focused window.
     pub fn close_focused_window() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().close_focused();
+            wm.close_focused();
             Ok(())
         })
     }
@@ -37,7 +37,7 @@ pub mod lazy {
     /// Moves the focus to the next window in the current group's stack.
     pub fn focus_next() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().focus_next();
+            wm.focus_next_in_group();
             Ok(())
         })
     }
@@ -45,7 +45,7 @@ pub mod lazy {
     /// Moves the focus to the previous window in the current group's stack.
     pub fn focus_previous() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().focus_previous();
+            wm.focus_previous_in_group();
             Ok(())
         })
     }
@@ -54,7 +54,7 @@ pub mod lazy {
     /// stack.
     pub fn shuffle_next() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().shuffle_next();
+            wm.swap_with_next_in_group();
             Ok(())
         })
     }
@@ -63,7 +63,7 @@ pub mod lazy {
     /// group's stack.
     pub fn shuffle_previous() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().shuffle_previous();
+            wm.swap_with_previous_in_group();
             Ok(())
         })
     }
@@ -71,7 +71,7 @@ pub mod lazy {
     /// Cycles to the next layout of the current group.
     pub fn layout_next() -> Command {
         Rc::new(|ref mut wm| {
-            wm.group_mut().layout_next();
+            wm.group_cycle_layouts();
             Ok(())
         })
     }
@@ -92,14 +92,6 @@ pub mod lazy {
         })
     }
 
-    /// Switches to the group specified by name.
-    pub fn switch_group(name: &'static str) -> Command {
-        Rc::new(move |wm| {
-            wm.switch_group(name);
-            Ok(())
-        })
-    }
-
     pub fn next_group() -> Command {
         Rc::new(|wm| {
             wm.next_group();
@@ -110,14 +102,6 @@ pub mod lazy {
     pub fn prev_group() -> Command {
         Rc::new(|wm| {
             wm.prev_group();
-            Ok(())
-        })
-    }
-
-    /// Moves the focused window on the active group to another group.
-    pub fn move_window_to_group(name: &'static str) -> Command {
-        Rc::new(move |wm| {
-            wm.move_focused_to_group(name);
             Ok(())
         })
     }

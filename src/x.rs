@@ -256,14 +256,12 @@ impl Connection {
     }
 
     /// Send the current set of windows and workspaces to any listeners to EHWM updates.
-    pub fn update_ewmh_desktops(&self, groups: &[Group], focused: usize) {
+    pub fn update_ewmh_desktops(&self, groups: &[Group], focused: usize, windows: Vec<&WindowId>) {
         let group_names = groups.iter().map(|g| g.name());
         ewmh::set_desktop_names(&self.conn, self.screen_idx, group_names);
         ewmh::set_number_of_desktops(&self.conn, self.screen_idx, groups.len() as u32);
-        let windows = groups
+        let windows = windows
             .iter()
-            .map(|g| g.iter())
-            .flatten()
             .map(|w| w.to_x())
             .collect::<Vec<_>>();
         ewmh::set_client_list(&self.conn, self.screen_idx, &windows);

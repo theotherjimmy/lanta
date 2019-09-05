@@ -16,12 +16,11 @@ pub mod layout;
 mod stack;
 mod x;
 
-use crate::groups::Group;
 use crate::keys::{KeyCombo, KeyHandlers};
 use crate::layout::Layout;
 use crate::x::{Crtc, CrtcChange, StrutPartial, WindowId, WindowType};
 
-pub use crate::groups::GroupBuilder;
+pub use crate::groups::{Group, GroupRef};
 pub use crate::keys::ModKey;
 pub use crate::stack::Stack;
 pub use crate::x::{Connection, CrtcInfo, Event};
@@ -96,7 +95,7 @@ impl Strut {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Viewport {
     pub x: u32,
     pub y: u32,
@@ -258,7 +257,6 @@ impl<T: Dockable> Screen<T> {
     /// all docks.
     pub fn viewports(&self, mut ports: Vec<Viewport>) -> Vec<Viewport> {
         let docks: Vec<Strut> = self.docks.iter().filter_map(T::get_strut).collect();
-        debug!("Docks: {:?}", docks);
         let width = ports.iter().map(|v| v.x + v.width).fold(0, cmp::max);
         let height = ports.iter().map(|v| v.y + v.height).fold(0, cmp::max);
         for vp in ports.iter_mut() {
@@ -266,7 +264,6 @@ impl<T: Dockable> Screen<T> {
                 .iter()
                 .fold(*vp, |v, s| v.without_strut(width, height, s));
         }
-        debug!("Calculated Viewport as {:?}", ports);
         ports
     }
 }
@@ -336,10 +333,36 @@ mod screen {
 
 type GroupId = usize;
 
+struct Window {
+    id: WindowId,
+    group: GroupId,
+}
+
+trait ByGroup {
+    fn windows_in_grp(&self, group_id: GroupId) -> Vec<WindowId>;
+}
+
+impl ByGroup for Vec<Window> {
+    fn windows_in_grp(&self, group_id: GroupId) -> Vec<WindowId> {
+        self.iter()
+            .filter_map(|w| {
+                if w.group == group_id {
+                    Some(&w.id)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+            .collect()
+    }
+}
+
 pub struct Lanta {
     connection: Rc<Connection>,
     keys: KeyHandlers,
     groups: Vec<Group>,
+    windows: Vec<Window>,
+    layouts: Vec<Box<dyn Layout>>,
     crtc: HashMap<Crtc, (CrtcInfo, GroupId)>,
     screen: Screen<Dock>,
     current_crtc: Crtc,
@@ -350,17 +373,13 @@ impl Lanta {
     pub fn new<K, G>(keys: K, groups: G, layouts: &[Box<dyn Layout>]) -> Result<Self>
     where
         K: Into<KeyHandlers>,
-        G: IntoIterator<Item = GroupBuilder>,
+        G: IntoIterator<Item = Group>,
     {
         let keys = keys.into();
         let connection = Rc::new(Connection::connect()?);
         connection.install_as_wm(&keys)?;
 
-        let groups = groups
-            .into_iter()
-            .map(|group: GroupBuilder| group.build(connection.clone(), layouts.to_owned()))
-            .collect::<Vec<Group>>()
-            .into();
+        let groups = groups.into_iter().collect::<Vec<Group>>().into();
         let mut crtc = connection
             .list_crtc()
             .context("Can't start window manager without a crtc map")?;
@@ -376,6 +395,8 @@ impl Lanta {
         let mut wm = Lanta {
             keys,
             groups,
+            windows: Default::default(),
+            layouts: layouts.iter().cloned().collect(),
             connection: connection,
             screen: Screen::default(),
             crtc,
@@ -394,22 +415,14 @@ impl Lanta {
         Ok(wm)
     }
 
-    fn deactivate_all_groups(&mut self) {
-        for group in self.groups.iter_mut() {
-            group.deactivate();
-        }
-    }
-
-    fn activate_current_groups(&mut self) {
+    fn activate_current_groups(&self) {
         let vps = self.viewports();
-        let Lanta {
-            ref crtc,
-            ref mut groups,
-            ..
-        } = self;
-        for ((_info, grp_id), viewport) in crtc.values().zip(vps.into_iter()) {
-            if let Some(group) = groups.get_mut(*grp_id) {
-                group.activate(viewport);
+        let Lanta { ref crtc, .. } = self;
+        for ((&crtc_id, (_info, grp_id)), viewport) in crtc.iter().zip(vps.into_iter()) {
+            let grpref = self.groupref(*grp_id);
+            grpref.map_to_viewport(&viewport);
+            if crtc_id == self.current_crtc {
+                grpref.focus_active_window()
             }
         }
     }
@@ -423,15 +436,18 @@ impl Lanta {
         (0..)
             .into_iter()
             .find(|gid| !gidx_set.contains(gid))
-            .unwrap()
+            .expect("You have more than MAXINT screens. HOW?")
     }
 
     fn update_ewmh_desktops(&self) {
         let current_group = self
             .group_idx()
             .expect("Lanta always maintains an active group.");
-        self.connection
-            .update_ewmh_desktops(&self.groups, current_group)
+        self.connection.update_ewmh_desktops(
+            &self.groups,
+            current_group,
+            self.windows.iter().map(|w| &w.id).collect(),
+        )
     }
 
     fn group_idx(&self) -> Option<usize> {
@@ -440,7 +456,7 @@ impl Lanta {
             .map(|(_info, idx)| idx.clone())
     }
 
-    fn viewports(&mut self) -> Vec<Viewport> {
+    fn viewports(&self) -> Vec<Viewport> {
         let viewports = self
             .crtc
             .values()
@@ -459,35 +475,233 @@ impl Lanta {
         if let Some(next_crtc) = iter.next() {
             self.current_crtc = *next_crtc;
         }
+        self.activate_current_groups()
     }
 
-    pub fn wait_on_child(&mut self, cld: Child) {
+    fn wait_on_child(&mut self, cld: Child) {
         self.children.push(cld);
     }
 
-    pub fn group(&self) -> &Group {
-        let group_idx = self
-            .group_idx()
-            .expect("The focused screen must have an active group");
-        self.groups
-            .get(group_idx)
-            .expect("The focused group must exist")
+    fn all_grouprefs<'a>(&'a self) -> Vec<GroupRef<'a>> {
+        (0..self.groups.len())
+            .map(|gid| self.groupref(gid))
+            .collect()
     }
 
-    pub fn group_mut(&mut self) -> &mut Group {
-        let group_idx = self
-            .group_idx()
-            .expect("The focused screen must have an active group");
-        self.groups
-            .get_mut(group_idx)
-            .expect("The focused group must exist")
+    fn deactivate_all_groups(&mut self) {
+        for group in self.all_grouprefs() {
+            group.unmap();
+        }
     }
 
-    fn focus_idx(&mut self, new_idx: usize) {
+    fn groupref<'a>(&'a self, group_id: GroupId) -> GroupRef<'a> {
+        let windows = self.windows.windows_in_grp(group_id);
+        let group = self
+            .groups
+            .get(group_id)
+            .expect("The focused screen must have an active group");
+        let focused_idx = group
+            .focused_window
+            .and_then(|w_id| windows.iter().position(|&w| w == w_id))
+            .unwrap_or_default();
+        let windows = Stack::from_parts(windows, focused_idx);
+        let layout = self
+            .layouts
+            .get(group.layout_id)
+            .expect("The focused group must have an active layout");
+        GroupRef::new(&self.connection, windows, layout.as_ref())
+    }
+
+    pub fn group_cycle_layouts(&mut self) {
+        let num_layouts = self.layouts.len();
+        if let Some(group) = self.group_idx().and_then(|gid| self.groups.get_mut(gid)) {
+            if let Some(next_layout) = (group.layout_id + 1).checked_rem(num_layouts) {
+                group.layout_id = next_layout;
+            }
+        }
+        self.activate_current_groups()
+    }
+
+    pub fn close_focused(&mut self) {
+        if let Some(id) = self
+            .group_idx()
+            .and_then(|gid| self.groups.get(gid))
+            .and_then(|g| g.focused_window)
+        {
+            self.connection.close_window(&id)
+        }
+    }
+
+    fn add_window_to_active_group(&mut self, id: WindowId) {
+        if let Some(gid) = self.group_idx() {
+            self.add_window_to_group(id, gid)
+        }
+    }
+
+    fn add_window_to_group(&mut self, id: WindowId, group: GroupId) {
+        self.windows.push(Window { id, group });
+        let group = self
+            .groups
+            .get_mut(group)
+            .expect("The focused screen must have an active group");
+        if group.focused_window.is_none() {
+            group.focused_window = Some(id);
+        }
+        self.activate_current_groups();
+        self.update_ewmh_desktops();
+    }
+
+    fn remove_window(&mut self, id: &WindowId) {
+        debug!("Removing window {:?}", id);
+        if let Some(window) = self.windows.iter().find(|w| &w.id != id) {
+            if let Some(group) = self.groups.get_mut(window.group) {
+                if Some(window.id) == group.focused_window {
+                    debug!("Group old focus: {:?}", group.focused_window);
+                    group.focused_window = self
+                        .windows
+                        .iter()
+                        .find(|w| w.group == window.group && &w.id != id)
+                        .map(|w| w.id);
+                    debug!("Group new focus: {:?}", group.focused_window);
+                } else {
+                    debug!("Group does not have this window focused");
+                }
+            } else {
+                error!("Removing window that is not in a valid group");
+            }
+        } else {
+            error!("Could not lookup window to remove");
+        }
+        self.windows.retain(|w| &w.id != id);
+        self.activate_current_groups();
+        self.update_ewmh_desktops();
+    }
+
+    fn focused_window(&self) -> Option<WindowId> {
+        self.group_idx()
+            .and_then(|gid| self.groups.get(gid))
+            .and_then(|g| g.focused_window)
+    }
+
+    fn modify_focus_group_window_with(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
+        if let Some(gid) = self.group_idx() {
+            if let Some(group) = self.groups.get_mut(gid) {
+                let windows = self.windows.windows_in_grp(gid);
+                if let Some(new_focus) = group
+                    .focused_window
+                    .map(|wid| windows.iter().position(|&w| w == wid).unwrap_or_default())
+                    .and_then(|w| fun(w, windows.len()))
+                {
+                    group.focused_window = windows.get(new_focus).cloned();
+                    self.activate_current_groups();
+                }
+            } else {
+                error!("Tried to change group focus, but the group_idx is not valid");
+            }
+        } else {
+            error!("Tried to change group focus, but theres is no current group idx");
+        }
+    }
+
+    pub fn focus_next_in_group(&mut self) {
+        self.modify_focus_group_window_with(
+            |cur, len| if cur + 1 < len { Some(cur + 1) } else { None },
+        );
+    }
+
+    pub fn focus_previous_in_group(&mut self) {
+        self.modify_focus_group_window_with(|idx, _| idx.checked_sub(1));
+    }
+
+    fn swap_windows(&mut self, lhs: WindowId, rhs: WindowId) {
+        let lhs_pos = self.windows.iter().position(|w| w.id == lhs);
+        let rhs_pos = self.windows.iter().position(|w| w.id == rhs);
+        match (lhs_pos, rhs_pos) {
+            (Some(lhs_pos), Some(rhs_pos)) => {
+                self.windows.get_mut(lhs_pos).unwrap().id = rhs;
+                self.windows.get_mut(rhs_pos).unwrap().id = lhs;
+            }
+            (Some(_), None) => {
+                error!("Could not swap; Right window is not present");
+            }
+            (None, Some(_)) => {
+                error!("Could not swap; Left window is not present");
+            }
+            (None, None) => {
+                error!("Could not swap; Both windows are not present");
+            }
+        }
+    }
+
+    fn swap_in_group_with(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
+        if let Some(gid) = self.group_idx() {
+            if let Some(wid) = self.groups.get(gid).and_then(|g| g.focused_window) {
+                let windows = self.windows.windows_in_grp(gid);
+                if let Some(pos) = windows.iter().position(|&w| w == wid) {
+                    if let Some(nextpos) = fun(pos, windows.len()) {
+                        if let Some(&id) = windows.get(nextpos) {
+                            self.swap_windows(wid, id);
+                            self.activate_current_groups();
+                        }
+                    } else {
+                        error!("No next position when swapping windows");
+                    }
+                } else {
+                    error!("Could not find current window when swapping windows");
+                }
+            } else {
+                error!("Can't swap without an active window");
+            }
+        } else {
+            error!("Tried to swap, but no group is active");
+        }
+    }
+
+    pub fn swap_with_next_in_group(&mut self) {
+        self.swap_in_group_with(|cur, len| if cur + 1 < len { Some(cur + 1) } else { None })
+    }
+
+    pub fn swap_with_previous_in_group(&mut self) {
+        self.swap_in_group_with(|cur, _| cur.checked_sub(1))
+    }
+
+    fn focus_window(&mut self, wid: &WindowId) {
+        if let Some(w) = self.windows.iter().find(|w| &w.id == wid) {
+            if let Some(g) = self.groups.get_mut(w.group) {
+                g.focused_window = Some(w.id);
+                if let Some((&crtc_id, _)) =
+                    self.crtc.iter().find(|(_id, (_, gid))| w.group == *gid)
+                {
+                    self.current_crtc = crtc_id;
+                }
+                self.activate_current_groups();
+            }
+        }
+    }
+
+    pub fn remove_focused_window(&mut self) {
+        if let Some(window_id) = self.focused_window() {
+            self.remove_window(&window_id);
+            self.activate_current_groups();
+        }
+    }
+
+    fn move_window_to_group(&mut self, id: WindowId, group: GroupId) {
+        for w in &mut self.windows {
+            if w.id == id {
+                w.group = group
+            }
+        }
+    }
+
+    fn focus_group(&mut self, new_idx: GroupId) {
         if new_idx >= self.groups.len() {
             return;
         }
-        let after_insert = self.crtc.get(&self.current_crtc).map(|(_info, gidx)| gidx.clone());
+        let after_insert = self
+            .crtc
+            .get(&self.current_crtc)
+            .map(|(_info, gidx)| gidx.clone());
         match after_insert {
             Some(old_idx) if old_idx != new_idx => {
                 for (_info, ref mut gid) in self.crtc.values_mut() {
@@ -504,101 +718,43 @@ impl Lanta {
         self.update_ewmh_desktops();
     }
 
-    pub fn switch_group<'a, S>(&'a mut self, name: S)
-    where
-        S: Into<&'a str>,
-    {
-        let name = name.into();
-
-        // If we're already on this group, do nothing.
-        if self.group().name() == name {
-            return;
-        }
-
-        match self.groups.iter().position(|group| group.name() == name) {
-            Some(idx) => {
-                self.deactivate_all_groups();
-                self.group_mut().deactivate();
-                self.focus_idx(idx);
-                self.activate_current_groups();
-            }
-            None => (),
+    fn shift_group(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
+        if let Some(next_group) = self.group_idx().and_then(|cur| fun(cur, self.groups.len())) {
+            self.deactivate_all_groups();
+            self.focus_group(next_group);
+            self.activate_current_groups();
         }
     }
 
     pub fn next_group(&mut self) {
-        self.deactivate_all_groups();
-        let current = self.group_idx().unwrap();
-        self.focus_idx(current + 1);
-        self.activate_current_groups();
+        self.shift_group(|cur, len| if cur + 1 < len { Some(cur + 1) } else { None })
     }
 
     pub fn prev_group(&mut self) {
-        info!("prev group");
-        self.deactivate_all_groups();
-        let current = self.group_idx().unwrap();
-        match current.checked_sub(1) {
-            Some(new_idx) => {
-                self.focus_idx(new_idx);
-            }
-            None => (),
-        };
-        self.activate_current_groups();
+        self.shift_group(|cur, _len| cur.checked_sub(1))
     }
 
-    /// Move the focused window from the active group to another named group.
-    ///
-    /// If the other named group does not exist, then the window is
-    /// (unfortunately) lost.
-    pub fn move_focused_to_group<'a, S>(&'a mut self, name: S)
-    where
-        S: Into<&'a str>,
-    {
-        let name = name.into();
-
-        // If the group is currently active, then do nothing. This avoids flicker as we
-        // unmap/remap.
-        if name == self.group().name() {
-            return;
-        }
-
-        if let Some(removed) = self.group_mut().remove_focused() {
-            let new_group = self.groups.iter_mut().find(|group| group.name() == name);
-            match new_group {
-                Some(new_group) => {
-                    new_group.add_window(removed);
-                }
-                None => {
-                    // It would be nice to put the window back in its group (or avoid taking it out
-                    // of its group until we've checked the new group exists), but it's difficult
-                    // to do this while keeping the borrow checker happy.
-                    error!("Moved window to non-existent group: {}", name);
-                }
+    fn move_focused_to_group(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
+        if let Some(gid) = self.group_idx().and_then(|idx| fun(idx, self.groups.len())) {
+            if let Some(id) = self.focused_window() {
+                self.move_window_to_group(id, gid);
             }
+            self.deactivate_all_groups();
+            self.focus_group(gid);
+            self.activate_current_groups();
         }
     }
 
     pub fn move_focused_to_next_group(&mut self) {
-        if let Some(removed) = self.group_mut().remove_focused() {
-            self.deactivate_all_groups();
-            self.next_group();
-            self.group_mut().add_window(removed);
-            self.activate_current_groups();
-        }
+        self.move_focused_to_group(|cur, len| if cur + 1 < len { Some(cur + 1) } else { None });
     }
 
     pub fn move_focused_to_prev_group(&mut self) {
-        if let Some(removed) = self.group_mut().remove_focused() {
-            self.deactivate_all_groups();
-            self.prev_group();
-            self.group_mut().add_window(removed);
-            self.activate_current_groups();
-        }
+        self.move_focused_to_group(|idx, _| idx.checked_sub(1));
     }
 
-    /// Returns whether the window is a member of any group.
     fn is_window_managed(&self, window_id: &WindowId) -> bool {
-        self.groups.iter().any(|g| g.contains(window_id))
+        self.windows.iter().find(|w| &w.id == window_id).is_some()
     }
 
     pub fn manage_window(&mut self, window_id: WindowId) {
@@ -646,21 +802,19 @@ impl Lanta {
             self.activate_current_groups();
         } else {
             self.connection.enable_window_tracking(&window_id);
-            self.group_mut().add_window(window_id);
+            self.add_window_to_active_group(window_id);
+            self.activate_current_groups();
         }
     }
 
     pub fn unmanage_window(&mut self, window_id: &WindowId) {
         debug!("Unmanaging window: {}", window_id);
-
         // Remove the window from whichever Group it is in. Special case for
         // docks which aren't in any group.
-        self.groups
-            .iter_mut()
-            .find(|group| group.contains(window_id))
-            .map(|group| group.remove_window(window_id));
         self.screen.remove_dock(window_id);
-
+        if self.is_window_managed(window_id) {
+            self.remove_window(window_id);
+        }
         // The viewport may have changed.
         self.activate_current_groups()
     }
@@ -703,15 +857,10 @@ impl Lanta {
             // (This will have the side-effect of mapping the window, as new windows are focused
             // and focused windows are mapped).
             self.manage_window(window_id);
-        } else if self.group().contains(&window_id) {
-            // Otherwise, if the window is in the active group, focus it. The application probably
-            // wants us to make it prominent. Log as there may be misbehaving applications that
-            // constantly re-map windows and cause focus issues.
-            info!(
-                "Window {} asked to be mapped but is already mapped: focusing.",
-                window_id
-            );
-            self.group_mut().focus(&window_id);
+        } else if let Some(w) = self.windows.iter().find(|w| w.id == window_id) {
+            if let Some(group) = self.groups.get_mut(w.group) {
+                group.focused_window = Some(w.id)
+            }
         }
     }
 
@@ -719,7 +868,9 @@ impl Lanta {
         // We only receive an unmap notify event when the window is actually
         // unmapped by its application. When our layouts unmap windows, they
         // (should) do it by disabling event tracking first.
-        debug!("ignoring unmap notify request for {}", window_id);
+        if self.is_window_managed(window_id) {
+            self.remove_window(window_id);
+        }
     }
 
     fn on_destroy_notify(&mut self, window_id: &WindowId) {
@@ -735,7 +886,7 @@ impl Lanta {
     }
 
     fn on_enter_notify(&mut self, window_id: &WindowId) {
-        self.group_mut().focus(window_id);
+        self.focus_window(window_id);
     }
 
     fn on_crtc_change(&mut self, change: &CrtcChange) {
@@ -756,7 +907,11 @@ impl Lanta {
         } else {
             self.crtc.remove(&change.crtc);
             if self.current_crtc == change.crtc {
-              self.current_crtc = *self.crtc.keys().next().unwrap();
+                self.current_crtc = *self
+                    .crtc
+                    .keys()
+                    .next()
+                    .expect("Must manage at least one screen");
             }
         }
         debug!(
