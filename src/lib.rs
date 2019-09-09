@@ -125,7 +125,7 @@ impl Viewport {
             right = cmp::min(right, screen_width - strut.right)
         }
         if (strut.top > 0) && (strut.top_start_x >= left) && (strut.top_end_x <= right) {
-            top = cmp::min(top, strut.top)
+            top = cmp::max(top, strut.top)
         }
         if (strut.bottom > 0) && (strut.bottom_start_x >= left) && (strut.bottom_end_x <= right) {
             bottom = cmp::min(bottom, screen_height - strut.bottom)
@@ -142,6 +142,39 @@ impl Viewport {
 #[cfg(test)]
 mod viewport {
     use super::{Strut, Viewport};
+
+    #[test]
+    fn top_strut_within_shrinks() {
+        let vp = Viewport {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let strut = Strut {
+            left: 0,
+            right: 0,
+            top: 35,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 2559,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        };
+        assert_eq!(
+            vp.without_strut(2560, 2720, &strut),
+            Viewport {
+                x: 0,
+                y: 35,
+                width: 2560,
+                height: 1405,
+            }
+        )
+    }
 
     #[test]
     fn bottom_strut_within_shrinks() {
