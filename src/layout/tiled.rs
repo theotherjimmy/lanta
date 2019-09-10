@@ -45,14 +45,14 @@ impl Layout for TiledLayout {
 #[derive(Clone)]
 pub struct ThreeColumn {
     name: String,
-    padding: u32,
+    inner_padding: u32,
 }
 
 impl ThreeColumn {
-    pub fn new<S: Into<String>>(name: S, padding: u32) -> ThreeColumn {
+    pub fn new<S: Into<String>>(name: S, inner_padding: u32) -> ThreeColumn {
         ThreeColumn {
             name: name.into(),
-            padding,
+            inner_padding,
         }
     }
 }
@@ -66,23 +66,23 @@ impl Layout for ThreeColumn {
         if stack.len() == 0 {
             Default::default()
         } else if stack.len() < 3 {
-            let tile_width = ((viewport.width - self.padding) / stack.len() as u32) - self.padding;
+            let tile_width = (viewport.width - (self.inner_padding * (stack.len() as u32 - 1))) / stack.len() as u32;
 
             stack
                 .iter()
                 .enumerate()
                 .map(|(i, &id)| {
                     let vp = Viewport {
-                        x: viewport.x + self.padding + (i as u32 * (tile_width + self.padding)),
-                        y: viewport.y + self.padding,
+                        x: viewport.x + (i as u32 * (tile_width + self.inner_padding)),
+                        y: viewport.y,
                         width: tile_width,
-                        height: viewport.height - (self.padding * 2),
+                        height: viewport.height,
                     };
                     MappedWindow { id, vp }
                 })
                 .collect()
         } else {
-            let tile_width = ((viewport.width - self.padding) / 3) - self.padding;
+            let tile_width = (viewport.width - (self.inner_padding * 2)) / 3;
             let win_per_col = stack.len() / 3;
             let leftovers = stack.len() - 3 * win_per_col;
             let cols = match leftovers {
@@ -99,13 +99,13 @@ impl Layout for ThreeColumn {
             };
             let mut to_ret = Vec::with_capacity(stack.len());
             for (col, slice) in cols.iter().enumerate() {
-                let x = viewport.x + self.padding + (col as u32 * (tile_width + self.padding));
+                let x = viewport.x + (col as u32 * (tile_width + self.inner_padding));
                 let tile_height =
-                    ((viewport.height - self.padding) / slice.len() as u32) - self.padding;
+                    (viewport.height - (self.inner_padding * (slice.len() as u32 - 1))) / slice.len() as u32;
                 for (row, &id) in slice.iter().enumerate() {
                     let vp = Viewport {
                         x,
-                        y: viewport.y + self.padding + (row as u32 * (tile_height + self.padding)),
+                        y: viewport.y + (row as u32 * (tile_height + self.inner_padding)),
                         width: tile_width,
                         height: tile_height,
                     };
