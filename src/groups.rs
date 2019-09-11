@@ -54,19 +54,7 @@ impl<'a> GroupRef<'a> {
         }
     }
 
-    pub fn map_to_viewport(&self, viewport: &Viewport) {
-        self.perform_layout(viewport);
-    }
-
-    pub fn unmap(&self) {
-        for window_id in self.windows.iter() {
-            self.connection.disable_window_tracking(window_id);
-            self.connection.unmap_window(window_id);
-            self.connection.enable_window_tracking(window_id);
-        }
-    }
-
-    fn perform_layout(&self, vp: &Viewport) {
+    pub fn map_to_viewport(&self, vp: &Viewport) -> Vec<MappedWindow> {
         let to_map = self.layout.layout(vp, &self.windows);
         let mapped_ids = to_map
             .iter()
@@ -85,6 +73,15 @@ impl<'a> GroupRef<'a> {
                 .configure_window(id, vp.x, vp.y, vp.width, vp.height);
             self.connection.map_window(id);
             self.connection.enable_window_tracking(id);
+        }
+        to_map
+    }
+
+    pub fn unmap(&self) {
+        for window_id in self.windows.iter() {
+            self.connection.disable_window_tracking(window_id);
+            self.connection.unmap_window(window_id);
+            self.connection.enable_window_tracking(window_id);
         }
     }
 
