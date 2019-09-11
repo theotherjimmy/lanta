@@ -5,7 +5,7 @@ use crate::cmd::Command;
 
 /// Represents a modifier key.
 #[allow(dead_code)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModKey {
     Shift,
     Lock,

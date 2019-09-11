@@ -9,16 +9,21 @@ edition = "2018"
 name = "lanta"
 doc = false
 
-
 [dependencies]
+directories = "2.0"
 fern = "0.5"
 failure = "0.1"
 libc = "0.2"
 log = "0.4"
 log-panics = { version = "2.0", features = ["with-backtrace"] }
+toml = "0.5"
 time = "0.1"
 x11 = "2.18"
 xdg = "2.2"
+
+[dependencies.serde]
+version = "1.0.100"
+features = ["derive"]
 
 [dependencies.xcb]
 version = "0.8"
