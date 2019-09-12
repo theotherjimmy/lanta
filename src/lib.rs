@@ -25,8 +25,8 @@ use screen::{Dock, Screen};
 use viewport::Viewport;
 
 pub use groups::{Group, GroupRef};
-pub use navigation::Direction;
 pub use keys::ModKey;
+pub use navigation::{Direction, Line, NextWindow};
 pub use stack::Stack;
 pub use x::{Connection, CrtcInfo, Event, WindowId};
 
@@ -345,21 +345,21 @@ impl Lanta {
         self.modify_focus_group_window_with(|idx, _| Some(idx.checked_sub(1).unwrap_or_default()));
     }
 
-    pub fn swap_in_direction(&mut self, dir: &Direction) {
+    pub fn swap_in_direction(&mut self, style: &dyn NextWindow<WindowId>, dir: &Direction) {
         if let Some(&MappedWindow { id, .. }) = self
             .focused_window()
             .and_then(|focused| self.mapped.iter().find(|w| w.id == focused))
-            .and_then(|w| dir.next_window_line(&w.vp, &self.mapped))
+            .and_then(|w| style.next_window(dir, &w.vp, &self.mapped))
         {
             self.swap_windows(id, self.focused_window().unwrap())
         }
     }
 
-    pub fn focus_in_direction(&mut self, dir: &Direction) {
+    pub fn focus_in_direction(&mut self, style: &dyn NextWindow<WindowId>, dir: &Direction) {
         if let Some(&MappedWindow { id, .. }) = self
             .focused_window()
             .and_then(|focused| self.mapped.iter().find(|w| w.id == focused))
-            .and_then(|w| dir.next_window_line(&w.vp, &self.mapped))
+            .and_then(|w| style.next_window(dir, &w.vp, &self.mapped))
         {
             self.focus_window(&id)
         }

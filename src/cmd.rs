@@ -17,7 +17,7 @@ pub mod lazy {
     use failure::ResultExt;
 
     use super::Command;
-    use crate::Direction;
+    use crate::{Direction, NextWindow, WindowId};
 
     /// Rotate the active Crtc
     pub fn rotate_crtc() -> Command {
@@ -35,16 +35,16 @@ pub mod lazy {
         })
     }
 
-    pub fn focus_in(dir: Direction) -> Command {
+    pub fn focus_in<S: NextWindow<WindowId> + 'static>(style: S, dir: Direction) -> Command {
         Rc::new(move |ref mut wm| {
-            wm.focus_in_direction(&dir);
+            wm.focus_in_direction(&style, &dir);
             Ok(())
         })
     }
 
-    pub fn swap_in(dir: Direction) -> Command {
+    pub fn swap_in<S: NextWindow<WindowId> + 'static>(style: S, dir: Direction) -> Command {
         Rc::new(move |ref mut wm| {
-            wm.swap_in_direction(&dir);
+            wm.swap_in_direction(&style, &dir);
             Ok(())
         })
     }
