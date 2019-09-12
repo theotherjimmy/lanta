@@ -15,7 +15,7 @@ pub struct Group {
 }
 
 impl Group {
-    pub fn new<S>(name: S, default_layout: &str, layouts: &[Box<dyn Layout>]) -> Group
+    pub fn new<S, T>(name: S, default_layout: &str, layouts: &[Box<dyn Layout<T>>]) -> Group
     where
         S: Into<Cow<'static, str>>,
     {
@@ -38,14 +38,14 @@ impl Group {
 pub struct GroupRef<'a> {
     connection: &'a Connection,
     windows: Stack<WindowId>,
-    layout: &'a dyn Layout,
+    layout: &'a dyn Layout<WindowId>,
 }
 
 impl<'a> GroupRef<'a> {
     pub fn new(
         connection: &'a Connection,
         windows: Stack<WindowId>,
-        layout: &'a dyn Layout,
+        layout: &'a dyn Layout<WindowId>,
     ) -> GroupRef<'a> {
         GroupRef {
             connection,
@@ -54,7 +54,7 @@ impl<'a> GroupRef<'a> {
         }
     }
 
-    pub fn map_to_viewport(&self, vp: &Viewport) -> Vec<MappedWindow> {
+    pub fn map_to_viewport(&self, vp: &Viewport) -> Vec<MappedWindow<WindowId>> {
         let to_map = self.layout.layout(vp, &self.windows);
         let mapped_ids = to_map
             .iter()

@@ -1,9 +1,8 @@
 use crate::layout::{Layout, MappedWindow};
 use crate::stack::Stack;
-use crate::x::WindowId;
 use crate::Viewport;
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct TiledLayout {
     name: String,
     padding: u32,
@@ -18,12 +17,12 @@ impl TiledLayout {
     }
 }
 
-impl Layout for TiledLayout {
+impl<T: Copy> Layout<T> for TiledLayout {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow> {
+    fn layout(&self, viewport: &Viewport, stack: &Stack<T>) -> Vec<MappedWindow<T>> {
         let tile_width = ((viewport.width - self.padding) / stack.len() as u32) - self.padding;
 
         stack
@@ -42,7 +41,7 @@ impl Layout for TiledLayout {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct ThreeColumn {
     name: String,
     inner_padding: u32,
@@ -57,12 +56,12 @@ impl ThreeColumn {
     }
 }
 
-impl Layout for ThreeColumn {
+impl<T: Copy> Layout<T> for ThreeColumn {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow> {
+    fn layout(&self, viewport: &Viewport, stack: &Stack<T>) -> Vec<MappedWindow<T>> {
         if stack.len() == 0 {
             Default::default()
         } else if stack.len() < 3 {

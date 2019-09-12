@@ -13,22 +13,26 @@ use serde::{Deserialize, Deserializer};
 
 use lanta::keysym::*;
 use lanta::layout::*;
-use lanta::{cmd, Group, Lanta, ModKey, Result as LantaResult};
-
+use lanta::{cmd, Direction, Group, Lanta, ModKey, Result as LantaResult, WindowId};
 
 #[derive(Deserialize, Debug)]
 enum Command {
     CloseFocused,
-    FocusNext,
-    FocusPrev,
-    SwapNext,
-    SwapPrev,
+    FocusUp,
+    FocusDown,
+    FocusLeft,
+    FocusRight,
+    SwapUp,
+    SwapDown,
+    SwapLeft,
+    SwapRight,
     GroupNext,
     GroupPrev,
     MoveToNextGroup,
     MoveToPrevGroup,
     RotateCrtc,
     RotateLayout,
+    RotateFocus,
     Spawn(Vec<String>),
 }
 
@@ -36,16 +40,21 @@ impl Into<cmd::Command> for Command {
     fn into(self) -> cmd::Command {
         match self {
             Command::CloseFocused => cmd::lazy::close_focused_window(),
-            Command::FocusNext => cmd::lazy::focus_next(),
-            Command::FocusPrev => cmd::lazy::focus_previous(),
-            Command::SwapNext => cmd::lazy::shuffle_next(),
-            Command::SwapPrev => cmd::lazy::shuffle_previous(),
+            Command::FocusUp => cmd::lazy::focus_in(Direction::Up),
+            Command::FocusDown => cmd::lazy::focus_in(Direction::Down),
+            Command::FocusLeft => cmd::lazy::focus_in(Direction::Left),
+            Command::FocusRight => cmd::lazy::focus_in(Direction::Right),
+            Command::SwapUp => cmd::lazy::swap_in(Direction::Up),
+            Command::SwapDown => cmd::lazy::swap_in(Direction::Down),
+            Command::SwapLeft => cmd::lazy::swap_in(Direction::Left),
+            Command::SwapRight => cmd::lazy::swap_in(Direction::Right),
             Command::GroupNext => cmd::lazy::next_group(),
             Command::GroupPrev => cmd::lazy::prev_group(),
             Command::MoveToNextGroup => cmd::lazy::move_window_to_next_group(),
             Command::MoveToPrevGroup => cmd::lazy::move_window_to_prev_group(),
             Command::RotateCrtc => cmd::lazy::rotate_crtc(),
             Command::RotateLayout => cmd::lazy::layout_next(),
+            Command::RotateFocus => cmd::lazy::rotate_focus_in_group(),
             Command::Spawn(cmd) => {
                 let mut command = std::process::Command::new(&cmd[0]);
                 command.args(&cmd[1..]);
@@ -141,8 +150,8 @@ struct LayoutSelect {
     layout: LayoutSelectInner,
 }
 
-impl Into<Box<dyn Layout>> for LayoutSelect {
-    fn into(self) -> Box<dyn Layout> {
+impl Into<Box<dyn Layout<WindowId>>> for LayoutSelect {
+    fn into(self) -> Box<dyn Layout<WindowId>> {
         match self.layout {
             LayoutSelectInner::ThreeColumn { padding } => {
                 Box::new(ThreeColumn::new(self.name, padding))
@@ -172,10 +181,10 @@ impl std::fmt::Display for NoProjectDir {
         write!(formatter, "Cound not find project dirs")
     }
 }
-impl std::error::Error for NoProjectDir { }
+impl std::error::Error for NoProjectDir {}
 
 fn main() -> LantaResult<()> {
-    let dirs = ProjectDirs::from("org", "foo", "lanta").ok_or(NoProjectDir{})?;
+    let dirs = ProjectDirs::from("org", "foo", "lanta").ok_or(NoProjectDir {})?;
     let mut config_path = dirs.config_dir().to_path_buf();
     config_path.push("lanta.toml");
     let mut config_file = File::open(config_path)?;
@@ -197,7 +206,7 @@ fn main() -> LantaResult<()> {
         .collect();
 
     lanta::intiailize_logger()?;
-    Lanta::new(keys, groups, &layouts)?.run();
+    Lanta::new(keys, groups, layouts)?.run();
 
     Ok(())
 }

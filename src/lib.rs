@@ -17,13 +17,13 @@ mod stack;
 mod x;
 
 use crate::keys::{KeyCombo, KeyHandlers};
-use crate::layout::Layout;
-use crate::x::{Crtc, CrtcChange, StrutPartial, WindowId, WindowType};
+use crate::layout::{Layout, MappedWindow};
+use crate::x::{Crtc, CrtcChange, StrutPartial, WindowType};
 
 pub use crate::groups::{Group, GroupRef};
 pub use crate::keys::ModKey;
 pub use crate::stack::Stack;
-pub use crate::x::{Connection, CrtcInfo, Event};
+pub use crate::x::{Connection, CrtcInfo, Event, WindowId};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -364,6 +364,161 @@ mod screen {
     }
 }
 
+#[derive(Debug)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Direction {
+    fn next_window_line<'a, T: std::fmt::Debug>(
+        &self,
+        focus: &Viewport,
+        windows: &'a Vec<MappedWindow<T>>,
+    ) -> Option<&'a MappedWindow<T>> {
+        let center_x = focus.x + (focus.width / 2);
+        let center_y = focus.y + (focus.height / 2);
+        let mut candidates: Vec<_> = windows
+            .iter()
+            .filter(|w| {
+                &w.vp != focus
+                    && match self {
+                        Direction::Up => {
+                            w.vp.y <= center_y
+                                && w.vp.x <= center_x
+                                && w.vp.x + w.vp.width >= center_x
+                        }
+                        Direction::Down => {
+                            w.vp.y >= center_y
+                                && w.vp.x <= center_x
+                                && w.vp.x + w.vp.width >= center_x
+                        }
+                        Direction::Left => {
+                            w.vp.x <= center_x
+                                && w.vp.y <= center_y
+                                && w.vp.y + w.vp.height >= center_y
+                        }
+                        Direction::Right => {
+                            w.vp.x >= center_x
+                                && w.vp.y <= center_y
+                                && w.vp.y + w.vp.height >= center_y
+                        }
+                    }
+            })
+            .collect();
+        candidates.sort_unstable_by_key(|w| match self {
+            Direction::Up | Direction::Down => w.vp.y,
+            Direction::Left | Direction::Right => w.vp.x,
+        });
+        debug!("{:?} {:?}", self, candidates);
+        match self {
+            Direction::Up | Direction::Left => candidates.last(),
+            Direction::Down | Direction::Right => candidates.first(),
+        }
+        .map(|&w| w)
+    }
+}
+#[cfg(test)]
+mod direction {
+    use super::{Direction, MappedWindow, Viewport};
+
+    #[test]
+    fn horizontal_move_picks_the_nearest_candidate() {
+        let windows: Vec<MappedWindow<u32>> = vec![
+            MappedWindow {
+                id: 0,
+                vp: Viewport {
+                    x: 0,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+            MappedWindow {
+                id: 1,
+                vp: Viewport {
+                    x: 854,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+            MappedWindow {
+                id: 2,
+                vp: Viewport {
+                    x: 1708,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+        ];
+        assert_eq!(
+            Direction::Left
+                .next_window_line(&windows[2].vp, &windows)
+                .unwrap()
+                .id,
+            1
+        );
+        assert_eq!(
+            Direction::Right
+                .next_window_line(&windows[0].vp, &windows)
+                .unwrap()
+                .id,
+            1
+        );
+    }
+
+    #[test]
+    fn vertical_move_picks_the_nearest_candidate() {
+        let windows: Vec<MappedWindow<u32>> = vec![
+            MappedWindow {
+                id: 0,
+                vp: Viewport {
+                    x: 0,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+            MappedWindow {
+                id: 1,
+                vp: Viewport {
+                    x: 854,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+            MappedWindow {
+                id: 2,
+                vp: Viewport {
+                    x: 1708,
+                    y: 35,
+                    width: 851,
+                    height: 1405,
+                },
+            },
+        ];
+        assert_eq!(
+            Direction::Left
+                .next_window_line(&windows[2].vp, &windows)
+                .unwrap()
+                .id,
+            1
+        );
+        assert_eq!(
+            Direction::Right
+                .next_window_line(&windows[0].vp, &windows)
+                .unwrap()
+                .id,
+            1
+        );
+    }
+}
+
 type GroupId = usize;
 
 struct Window {
@@ -395,15 +550,16 @@ pub struct Lanta {
     keys: KeyHandlers,
     groups: Vec<Group>,
     windows: Vec<Window>,
-    layouts: Vec<Box<dyn Layout>>,
+    layouts: Vec<Box<dyn Layout<WindowId>>>,
     crtc: HashMap<Crtc, (CrtcInfo, GroupId)>,
     screen: Screen<Dock>,
     current_crtc: Crtc,
     children: Vec<Child>,
+    mapped: Vec<MappedWindow<WindowId>>,
 }
 
 impl Lanta {
-    pub fn new<K, G>(keys: K, groups: G, layouts: &[Box<dyn Layout>]) -> Result<Self>
+    pub fn new<K, G>(keys: K, groups: G, layouts: Vec<Box<dyn Layout<WindowId>>>) -> Result<Self>
     where
         K: Into<KeyHandlers>,
         G: IntoIterator<Item = Group>,
@@ -429,12 +585,13 @@ impl Lanta {
             keys,
             groups,
             windows: Default::default(),
-            layouts: layouts.iter().cloned().collect(),
+            layouts: layouts,
             connection: connection,
             screen: Screen::default(),
             crtc,
             children: Vec::new(),
             current_crtc,
+            mapped: Vec::new(),
         };
 
         // Learn about existing top-level windows.
@@ -448,16 +605,18 @@ impl Lanta {
         Ok(wm)
     }
 
-    fn activate_current_groups(&self) {
+    fn activate_current_groups(&mut self) {
         let vps = self.viewports();
         let Lanta { ref crtc, .. } = self;
+        let mut new_mapped_windows = Vec::new();
         for ((&crtc_id, (_info, grp_id)), viewport) in crtc.iter().zip(vps.into_iter()) {
             let grpref = self.groupref(*grp_id);
-            grpref.map_to_viewport(&viewport);
+            new_mapped_windows.extend(grpref.map_to_viewport(&viewport).into_iter());
             if crtc_id == self.current_crtc {
                 grpref.focus_active_window()
             }
         }
+        self.mapped = new_mapped_windows;
     }
 
     fn find_next_unallocated_group(&self) -> GroupId {
@@ -636,14 +795,28 @@ impl Lanta {
         }
     }
 
-    pub fn focus_next_in_group(&mut self) {
-        self.modify_focus_group_window_with(
-            |cur, len| if cur + 1 < len { Some(cur + 1) } else { None },
-        );
+    pub fn rotate_focus_in_group(&mut self) {
+        self.modify_focus_group_window_with(|idx, _| Some(idx.checked_sub(1).unwrap_or_default()));
     }
 
-    pub fn focus_previous_in_group(&mut self) {
-        self.modify_focus_group_window_with(|idx, _| idx.checked_sub(1));
+    pub fn swap_in_direction(&mut self, dir: &Direction) {
+        if let Some(&MappedWindow { id, .. }) = self
+            .focused_window()
+            .and_then(|focused| self.mapped.iter().find(|w| w.id == focused))
+            .and_then(|w| dir.next_window_line(&w.vp, &self.mapped))
+        {
+            self.swap_windows(id, self.focused_window().unwrap())
+        }
+    }
+
+    pub fn focus_in_direction(&mut self, dir: &Direction) {
+        if let Some(&MappedWindow { id, .. }) = self
+            .focused_window()
+            .and_then(|focused| self.mapped.iter().find(|w| w.id == focused))
+            .and_then(|w| dir.next_window_line(&w.vp, &self.mapped))
+        {
+            self.focus_window(&id)
+        }
     }
 
     fn swap_windows(&mut self, lhs: WindowId, rhs: WindowId) {
@@ -653,6 +826,7 @@ impl Lanta {
             (Some(lhs_pos), Some(rhs_pos)) => {
                 self.windows.get_mut(lhs_pos).unwrap().id = rhs;
                 self.windows.get_mut(rhs_pos).unwrap().id = lhs;
+                self.activate_current_groups();
             }
             (Some(_), None) => {
                 error!("Could not swap; Right window is not present");
@@ -674,7 +848,6 @@ impl Lanta {
                     if let Some(nextpos) = fun(pos, windows.len()) {
                         if let Some(&id) = windows.get(nextpos) {
                             self.swap_windows(wid, id);
-                            self.activate_current_groups();
                         }
                     } else {
                         error!("No next position when swapping windows");

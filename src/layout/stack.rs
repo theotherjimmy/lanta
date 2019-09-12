@@ -1,9 +1,8 @@
 use crate::layout::{Layout, MappedWindow};
 use crate::stack::Stack;
-use crate::x::WindowId;
 use crate::Viewport;
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct StackLayout {
     name: String,
     padding: u32,
@@ -18,12 +17,12 @@ impl StackLayout {
     }
 }
 
-impl Layout for StackLayout {
+impl<T: Copy> Layout<T> for StackLayout {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn layout(&self, viewport: &Viewport, stack: &Stack<WindowId>) -> Vec<MappedWindow> {
+    fn layout(&self, viewport: &Viewport, stack: &Stack<T>) -> Vec<MappedWindow<T>> {
         match stack.focused() {
             Some(&id) => {
                 let vp = Viewport{
