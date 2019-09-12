@@ -284,11 +284,9 @@ impl Lanta {
     }
 
     fn remove_window(&mut self, id: &WindowId) {
-        debug!("Removing window {:?}", id);
         if let Some(window) = self.windows.iter().find(|w| &w.id == id) {
             if let Some(group) = self.groups.get_mut(window.group) {
                 if Some(window.id) == group.focused_window {
-                    debug!("Group old focus: {:?}", group.focused_window);
                     let windows = self.windows.in_group(window.group);
                     let pos = windows.iter().position(|w| w == id);
                     group.focused_window = pos
@@ -298,15 +296,15 @@ impl Lanta {
                                 .or_else(|| windows.get(p + 1))
                         })
                         .map(|&w| w);
-                    debug!("Group new focus: {:?}", group.focused_window);
-                } else {
-                    debug!("Group does not have this window focused");
                 }
             } else {
-                error!("Removing window that is not in a valid group");
+                error!(
+                    "Removing window {:?} with an invalid group {}",
+                    id, window.group
+                );
             }
         } else {
-            error!("Could not lookup window to remove");
+            error!("Could not lookup window {:?} to remove", id);
         }
         self.windows.retain(|w| &w.id != id);
         self.activate_current_groups();
