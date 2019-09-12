@@ -72,21 +72,15 @@ struct Window {
     group: GroupId,
 }
 
-trait ByGroup {
-    fn windows_in_grp(&self, group_id: GroupId) -> Vec<WindowId>;
+trait InGroup {
+    fn in_group(&self, group_id: GroupId) -> Vec<WindowId>;
 }
 
-impl ByGroup for Vec<Window> {
-    fn windows_in_grp(&self, group_id: GroupId) -> Vec<WindowId> {
+impl InGroup for Vec<Window> {
+    fn in_group(&self, group_id: GroupId) -> Vec<WindowId> {
         self.iter()
-            .filter_map(|w| {
-                if w.group == group_id {
-                    Some(&w.id)
-                } else {
-                    None
-                }
-            })
-            .cloned()
+            .filter(|w| w.group == group_id)
+            .map(|w| w.id)
             .collect()
     }
 }
@@ -233,7 +227,7 @@ impl Lanta {
     }
 
     fn groupref<'a>(&'a self, group_id: GroupId) -> GroupRef<'a> {
-        let windows = self.windows.windows_in_grp(group_id);
+        let windows = self.windows.in_group(group_id);
         let group = self
             .groups
             .get(group_id)
@@ -324,7 +318,7 @@ impl Lanta {
     fn modify_focus_group_window_with(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
         if let Some(gid) = self.group_idx() {
             if let Some(group) = self.groups.get_mut(gid) {
-                let windows = self.windows.windows_in_grp(gid);
+                let windows = self.windows.in_group(gid);
                 if let Some(new_focus) = group
                     .focused_window
                     .map(|wid| windows.iter().position(|&w| w == wid).unwrap_or_default())
@@ -389,7 +383,7 @@ impl Lanta {
     fn swap_in_group_with(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
         if let Some(gid) = self.group_idx() {
             if let Some(wid) = self.groups.get(gid).and_then(|g| g.focused_window) {
-                let windows = self.windows.windows_in_grp(gid);
+                let windows = self.windows.in_group(gid);
                 if let Some(pos) = windows.iter().position(|&w| w == wid) {
                     if let Some(nextpos) = fun(pos, windows.len()) {
                         if let Some(&id) = windows.get(nextpos) {
