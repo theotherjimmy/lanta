@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer};
 
 use lanta::keysym::*;
 use lanta::layout::*;
-use lanta::{cmd, Direction, Group, Lanta, Line, ModKey, Result as LantaResult, WindowId};
+use lanta::{cmd, Direction, Group, Lanta, Center, ModKey, Result as LantaResult, WindowId};
 
 #[derive(Deserialize, Debug)]
 enum Command {
@@ -40,14 +40,14 @@ impl Into<cmd::Command> for Command {
     fn into(self) -> cmd::Command {
         match self {
             Command::CloseFocused => cmd::lazy::close_focused_window(),
-            Command::FocusUp => cmd::lazy::focus_in(Line(), Direction::Up),
-            Command::FocusDown => cmd::lazy::focus_in(Line(), Direction::Down),
-            Command::FocusLeft => cmd::lazy::focus_in(Line(), Direction::Left),
-            Command::FocusRight => cmd::lazy::focus_in(Line(), Direction::Right),
-            Command::SwapUp => cmd::lazy::swap_in(Line(), Direction::Up),
-            Command::SwapDown => cmd::lazy::swap_in(Line(), Direction::Down),
-            Command::SwapLeft => cmd::lazy::swap_in(Line(), Direction::Left),
-            Command::SwapRight => cmd::lazy::swap_in(Line(), Direction::Right),
+            Command::FocusUp => cmd::lazy::focus_in(Center(), Direction::Up),
+            Command::FocusDown => cmd::lazy::focus_in(Center(), Direction::Down),
+            Command::FocusLeft => cmd::lazy::focus_in(Center(), Direction::Left),
+            Command::FocusRight => cmd::lazy::focus_in(Center(), Direction::Right),
+            Command::SwapUp => cmd::lazy::swap_in(Center(), Direction::Up),
+            Command::SwapDown => cmd::lazy::swap_in(Center(), Direction::Down),
+            Command::SwapLeft => cmd::lazy::swap_in(Center(), Direction::Left),
+            Command::SwapRight => cmd::lazy::swap_in(Center(), Direction::Right),
             Command::GroupNext => cmd::lazy::next_group(),
             Command::GroupPrev => cmd::lazy::prev_group(),
             Command::MoveToNextGroup => cmd::lazy::move_window_to_next_group(),

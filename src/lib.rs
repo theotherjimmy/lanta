@@ -26,7 +26,7 @@ use viewport::Viewport;
 
 pub use groups::{Group, GroupRef};
 pub use keys::ModKey;
-pub use navigation::{Direction, Line, NextWindow};
+pub use navigation::{Center, Direction, Line, NextWindow};
 pub use stack::Stack;
 pub use x::{Connection, CrtcInfo, Event, WindowId};
 
