@@ -349,7 +349,7 @@ impl Lanta {
     }
 
     pub fn rotate_focus_in_group(&mut self) {
-        self.modify_focus_group_window_with(|idx, _| Some(idx.checked_sub(1).unwrap_or_default()));
+        self.modify_focus_group_window_with(|idx, len| Some(idx.checked_sub(1).unwrap_or(len - 1)));
     }
 
     pub fn swap_in_direction(&mut self, style: &dyn NextWindow<WindowId>, dir: &Direction) {
