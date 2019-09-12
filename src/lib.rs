@@ -291,7 +291,7 @@ impl Lanta {
 
     fn remove_window(&mut self, id: &WindowId) {
         debug!("Removing window {:?}", id);
-        if let Some(window) = self.windows.iter().find(|w| &w.id != id) {
+        if let Some(window) = self.windows.iter().find(|w| &w.id == id) {
             if let Some(group) = self.groups.get_mut(window.group) {
                 if Some(window.id) == group.focused_window {
                     debug!("Group old focus: {:?}", group.focused_window);
