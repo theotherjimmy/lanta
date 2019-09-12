@@ -289,11 +289,15 @@ impl Lanta {
             if let Some(group) = self.groups.get_mut(window.group) {
                 if Some(window.id) == group.focused_window {
                     debug!("Group old focus: {:?}", group.focused_window);
-                    group.focused_window = self
-                        .windows
-                        .iter()
-                        .find(|w| w.group == window.group && &w.id != id)
-                        .map(|w| w.id);
+                    let windows = self.windows.in_group(window.group);
+                    let pos = windows.iter().position(|w| w == id);
+                    group.focused_window = pos
+                        .and_then(|p| {
+                            p.checked_sub(1)
+                                .and_then(|p| windows.get(p))
+                                .or_else(|| windows.get(p + 1))
+                        })
+                        .map(|&w| w);
                     debug!("Group new focus: {:?}", group.focused_window);
                 } else {
                     debug!("Group does not have this window focused");
