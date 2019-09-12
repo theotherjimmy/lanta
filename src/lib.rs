@@ -288,8 +288,9 @@ impl Lanta {
             if let Some(group) = self.groups.get_mut(window.group) {
                 if Some(window.id) == group.focused_window {
                     let windows = self.windows.in_group(window.group);
-                    let pos = windows.iter().position(|w| w == id);
-                    group.focused_window = pos
+                    group.focused_window = windows
+                        .iter()
+                        .position(|w| w == id)
                         .and_then(|p| {
                             p.checked_sub(1)
                                 .and_then(|p| windows.get(p))
