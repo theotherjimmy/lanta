@@ -16,7 +16,7 @@ failure = "0.1"
 libc = "0.2"
 log = "0.4"
 log-panics = { version = "2.0", features = ["with-backtrace"] }
-toml = "0.5"
+serde_yaml = "0.8"
 time = "0.1"
 x11 = "2.18"
 xdg = "2.2"

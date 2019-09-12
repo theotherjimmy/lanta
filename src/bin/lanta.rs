@@ -13,19 +13,67 @@ use serde::{Deserialize, Deserializer};
 
 use lanta::keysym::*;
 use lanta::layout::*;
-use lanta::{cmd, Direction, Group, Lanta, Center, ModKey, Result as LantaResult, WindowId};
+use lanta::{
+    cmd, Center, Direction, Group, Lanta, Line, ModKey, NextWindow, Result as LantaResult,
+    Viewport, WindowId,
+};
+
+#[derive(Deserialize, Debug)]
+enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+impl Into<Direction> for Dir {
+    fn into(self) -> Direction {
+        match self {
+            Dir::Left => Direction::Left,
+            Dir::Right => Direction::Right,
+            Dir::Up => Direction::Up,
+            Dir::Down => Direction::Down,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+enum Style {
+    Line,
+    Center,
+}
+enum NextWindowStyle {
+    Line(Line),
+    Center(Center),
+}
+
+impl Into<NextWindowStyle> for Style {
+    fn into(self) -> NextWindowStyle {
+        match self {
+            Style::Line => NextWindowStyle::Line(Line()),
+            Style::Center => NextWindowStyle::Center(Center()),
+        }
+    }
+}
+
+impl NextWindow<WindowId> for NextWindowStyle {
+    fn next_window<'a>(
+        &self,
+        dir: &Direction,
+        vp: &Viewport,
+        wins: &'a Vec<MappedWindow<WindowId>>,
+    ) -> Option<&'a MappedWindow<WindowId>> {
+        match self {
+            NextWindowStyle::Line(l) => l.next_window(dir, vp, wins),
+            NextWindowStyle::Center(c) => c.next_window(dir, vp, wins),
+        }
+    }
+}
 
 #[derive(Deserialize, Debug)]
 enum Command {
     CloseFocused,
-    FocusUp,
-    FocusDown,
-    FocusLeft,
-    FocusRight,
-    SwapUp,
-    SwapDown,
-    SwapLeft,
-    SwapRight,
+    Focus(Style, Dir),
+    Swap(Style, Dir),
     GroupNext,
     GroupPrev,
     MoveToNextGroup,
@@ -40,14 +88,14 @@ impl Into<cmd::Command> for Command {
     fn into(self) -> cmd::Command {
         match self {
             Command::CloseFocused => cmd::lazy::close_focused_window(),
-            Command::FocusUp => cmd::lazy::focus_in(Center(), Direction::Up),
-            Command::FocusDown => cmd::lazy::focus_in(Center(), Direction::Down),
-            Command::FocusLeft => cmd::lazy::focus_in(Center(), Direction::Left),
-            Command::FocusRight => cmd::lazy::focus_in(Center(), Direction::Right),
-            Command::SwapUp => cmd::lazy::swap_in(Center(), Direction::Up),
-            Command::SwapDown => cmd::lazy::swap_in(Center(), Direction::Down),
-            Command::SwapLeft => cmd::lazy::swap_in(Center(), Direction::Left),
-            Command::SwapRight => cmd::lazy::swap_in(Center(), Direction::Right),
+            Command::Focus(s, d) => {
+                let style: NextWindowStyle = s.into();
+                cmd::lazy::focus_in(style, d.into())
+            }
+            Command::Swap(s, d) => {
+                let style: NextWindowStyle = s.into();
+                cmd::lazy::swap_in(style, d.into())
+            }
             Command::GroupNext => cmd::lazy::next_group(),
             Command::GroupPrev => cmd::lazy::prev_group(),
             Command::MoveToNextGroup => cmd::lazy::move_window_to_next_group(),
@@ -186,7 +234,7 @@ impl std::error::Error for NoProjectDir {}
 fn main() -> LantaResult<()> {
     let dirs = ProjectDirs::from("org", "foo", "lanta").ok_or(NoProjectDir {})?;
     let mut config_path = dirs.config_dir().to_path_buf();
-    config_path.push("lanta.toml");
+    config_path.push("lanta.yaml");
     let mut config_file = File::open(config_path)?;
     let mut buffer = Vec::new();
     config_file.read_to_end(&mut buffer)?;
@@ -194,7 +242,7 @@ fn main() -> LantaResult<()> {
         keys,
         layouts,
         groups,
-    } = toml::de::from_str(from_utf8(&buffer).unwrap())?;
+    } = serde_yaml::from_str(from_utf8(&buffer).unwrap())?;
     let keys: Vec<_> = keys
         .into_iter()
         .map(|(k, v)| (k.mods, k.key, v.into()))

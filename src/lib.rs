@@ -22,12 +22,12 @@ use crate::x::{Crtc, CrtcChange, WindowType};
 use keys::{KeyCombo, KeyHandlers};
 use layout::{Layout, MappedWindow};
 use screen::{Dock, Screen};
-use viewport::Viewport;
 
 pub use groups::{Group, GroupRef};
 pub use keys::ModKey;
 pub use navigation::{Center, Direction, Line, NextWindow};
 pub use stack::Stack;
+pub use viewport::Viewport;
 pub use x::{Connection, CrtcInfo, Event, WindowId};
 
 pub type Result<T> = std::result::Result<T, Error>;
