@@ -37,7 +37,7 @@ impl Strut {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct Viewport {
     pub x: u32,
     pub y: u32,

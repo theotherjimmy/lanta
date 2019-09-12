@@ -23,7 +23,7 @@ use keys::{KeyCombo, KeyHandlers};
 use layout::{Layout, MappedWindow};
 use screen::{Dock, Screen};
 
-pub use groups::{Group, GroupRef};
+pub use groups::Group;
 pub use keys::ModKey;
 pub use navigation::{Center, Direction, Line, NextWindow};
 pub use stack::Stack;
@@ -145,16 +145,57 @@ impl Lanta {
         Ok(wm)
     }
 
+    fn groupref(&self, group_id: GroupId) -> (Stack<WindowId>, &dyn Layout<WindowId>) {
+        let windows = self.windows.in_group(group_id);
+        let group = self
+            .groups
+            .get(group_id)
+            .expect("The focused screen must have an active group");
+        let focused_idx = group
+            .focused_window
+            .and_then(|w_id| windows.iter().position(|&w| w == w_id))
+            .unwrap_or_default();
+        let windows = Stack::from_parts(windows, focused_idx);
+        let layout = self
+            .layouts
+            .get(group.layout_id)
+            .expect("The focused group must have an active layout");
+        (windows, layout.as_ref())
+    }
+
     fn activate_current_groups(&mut self) {
         let vps = self.viewports();
         let Lanta { ref crtc, .. } = self;
         let mut new_mapped_windows = Vec::new();
         for ((&crtc_id, (_info, grp_id)), viewport) in crtc.iter().zip(vps.into_iter()) {
-            let grpref = self.groupref(*grp_id);
-            new_mapped_windows.extend(grpref.map_to_viewport(&viewport).into_iter());
+            let (windows, layout) = self.groupref(*grp_id);
+            new_mapped_windows.extend(layout.layout(&viewport, &windows).into_iter());
             if crtc_id == self.current_crtc {
-                grpref.focus_active_window()
+                match windows.focused() {
+                    Some(window_id) => self.connection.focus_window(window_id),
+                    None => self.connection.focus_nothing(),
+                }
             }
+        }
+
+        let prev_ids: HashSet<_> = self.mapped.iter().map(|w| w.id).collect();
+        let next_ids: HashSet<_> = new_mapped_windows.iter().map(|w| w.id).collect();
+        let prev: HashSet<_> = self.mapped.iter().collect();
+        let next: HashSet<_> = new_mapped_windows.iter().collect();
+
+        for id in prev_ids.difference(&next_ids) {
+            self.connection.disable_window_tracking(id);
+            self.connection.unmap_window(id);
+            self.connection.enable_window_tracking(id);
+        }
+        for MappedWindow { id, vp } in next.difference(&prev) {
+            self.connection
+                .configure_window(id, vp.x, vp.y, vp.width, vp.height);
+        }
+        for id in next_ids.difference(&prev_ids) {
+            self.connection.disable_window_tracking(id);
+            self.connection.map_window(id);
+            self.connection.enable_window_tracking(id);
         }
         self.mapped = new_mapped_windows;
     }
@@ -213,37 +254,6 @@ impl Lanta {
     fn wait_on_child(&mut self, cld: Child) {
         self.children.push(cld);
     }
-
-    fn all_grouprefs<'a>(&'a self) -> Vec<GroupRef<'a>> {
-        (0..self.groups.len())
-            .map(|gid| self.groupref(gid))
-            .collect()
-    }
-
-    fn deactivate_all_groups(&mut self) {
-        for group in self.all_grouprefs() {
-            group.unmap();
-        }
-    }
-
-    fn groupref<'a>(&'a self, group_id: GroupId) -> GroupRef<'a> {
-        let windows = self.windows.in_group(group_id);
-        let group = self
-            .groups
-            .get(group_id)
-            .expect("The focused screen must have an active group");
-        let focused_idx = group
-            .focused_window
-            .and_then(|w_id| windows.iter().position(|&w| w == w_id))
-            .unwrap_or_default();
-        let windows = Stack::from_parts(windows, focused_idx);
-        let layout = self
-            .layouts
-            .get(group.layout_id)
-            .expect("The focused group must have an active layout");
-        GroupRef::new(&self.connection, windows, layout.as_ref())
-    }
-
     pub fn group_cycle_layouts(&mut self) {
         let num_layouts = self.layouts.len();
         if let Some(group) = self.group_idx().and_then(|gid| self.groups.get_mut(gid)) {
@@ -469,7 +479,6 @@ impl Lanta {
 
     fn shift_group(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
         if let Some(next_group) = self.group_idx().and_then(|cur| fun(cur, self.groups.len())) {
-            self.deactivate_all_groups();
             self.focus_group(next_group);
             self.activate_current_groups();
         }
@@ -488,7 +497,6 @@ impl Lanta {
             if let Some(id) = self.focused_window() {
                 self.move_window_to_group(id, gid);
             }
-            self.deactivate_all_groups();
             self.focus_group(gid);
             self.activate_current_groups();
         }

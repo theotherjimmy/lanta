@@ -1,10 +1,7 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
 
-use super::Viewport;
-use crate::layout::{Layout, MappedWindow};
-use crate::stack::Stack;
-use crate::x::{Connection, WindowId};
+use crate::layout::Layout;
+use crate::x::WindowId;
 
 type LayoutId = usize;
 
@@ -32,65 +29,5 @@ impl Group {
 
     pub fn name(&self) -> &str {
         &self.name
-    }
-}
-
-pub struct GroupRef<'a> {
-    connection: &'a Connection,
-    windows: Stack<WindowId>,
-    layout: &'a dyn Layout<WindowId>,
-}
-
-impl<'a> GroupRef<'a> {
-    pub fn new(
-        connection: &'a Connection,
-        windows: Stack<WindowId>,
-        layout: &'a dyn Layout<WindowId>,
-    ) -> GroupRef<'a> {
-        GroupRef {
-            connection,
-            windows,
-            layout,
-        }
-    }
-
-    pub fn map_to_viewport(&self, vp: &Viewport) -> Vec<MappedWindow<WindowId>> {
-        let to_map = self.layout.layout(vp, &self.windows);
-        let mapped_ids = to_map
-            .iter()
-            .map(|MappedWindow { id, .. }| id)
-            .collect::<HashSet<_>>();
-        for id in self.windows.iter() {
-            if !mapped_ids.contains(id) {
-                self.connection.disable_window_tracking(id);
-                self.connection.unmap_window(id);
-                self.connection.enable_window_tracking(id);
-            }
-        }
-        for MappedWindow { id, vp } in &to_map {
-            self.connection.disable_window_tracking(id);
-            self.connection
-                .configure_window(id, vp.x, vp.y, vp.width, vp.height);
-            self.connection.map_window(id);
-            self.connection.enable_window_tracking(id);
-        }
-        to_map
-    }
-
-    pub fn unmap(&self) {
-        for window_id in self.windows.iter() {
-            self.connection.disable_window_tracking(window_id);
-            self.connection.unmap_window(window_id);
-            self.connection.enable_window_tracking(window_id);
-        }
-    }
-
-    /// Focus the focused window for this group, or to unset the focus when
-    /// we have no windows.
-    pub fn focus_active_window(&self) {
-        match self.windows.focused() {
-            Some(window_id) => self.connection.focus_window(window_id),
-            None => self.connection.focus_nothing(),
-        }
     }
 }
