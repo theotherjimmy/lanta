@@ -62,7 +62,7 @@ A layout is given a name, type, and optional layout-specific attributes, such as
 
 For example, the layouts section of my config file looks like:
 
-```
+```yaml
 layouts:
   - name: 3-column
     type: ThreeColumn
@@ -77,7 +77,7 @@ The `groups` section lists objects that describe groups.
 A group object contains a name, and default layout.
 
 For example, my groups section looks like:
-```
+```yaml
 groups:
   - name: ♅
     layout: 3-column
@@ -109,8 +109,8 @@ The valid actions are:
  - RotateFocus
  - Spawn
 
- For example, my keybinding configuration looks like:
- ```
+For example, my keybinding configuration looks like:
+```yaml
 keys:
   M-d: CloseFocused
   M-l:
