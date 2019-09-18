@@ -433,19 +433,21 @@ impl Connection {
         xcb::change_window_attributes(&self.conn, window_id.to_x(), &values);
     }
 
-    pub fn focus_window(&self, window_id: &WindowId) {
-        xcb::set_input_focus(
-            &self.conn,
-            xcb::INPUT_FOCUS_POINTER_ROOT as u8,
-            window_id.to_x(),
-            xcb::CURRENT_TIME,
-        );
-        ewmh::set_active_window(&self.conn, self.screen_idx, window_id.to_x());
-    }
-
-    /// Unsets EWMH's _NET_ACTIVE_WINDOW to indicate there is no active window.
-    pub fn focus_nothing(&self) {
-        ewmh::set_active_window(&self.conn, self.screen_idx, xcb::NONE);
+    pub fn focus(&self, window: Option<&WindowId>) {
+        match window {
+            Some(window_id) => {
+                xcb::set_input_focus(
+                    &self.conn,
+                    xcb::INPUT_FOCUS_POINTER_ROOT as u8,
+                    window_id.to_x(),
+                    xcb::CURRENT_TIME,
+                );
+                ewmh::set_active_window(&self.conn, self.screen_idx, window_id.to_x());
+            }
+            None => {
+                ewmh::set_active_window(&self.conn, self.screen_idx, xcb::NONE);
+            }
+        }
     }
 
     pub fn get_event_loop(&self) -> EventLoop<'_> {

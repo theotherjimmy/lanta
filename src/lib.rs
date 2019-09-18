@@ -167,15 +167,9 @@ impl Lanta {
         let vps = self.viewports();
         let Lanta { ref crtc, .. } = self;
         let mut new_mapped_windows = Vec::new();
-        for ((&crtc_id, (_info, grp_id)), viewport) in crtc.iter().zip(vps.into_iter()) {
+        for ((_crtc_id, (_info, grp_id)), viewport) in crtc.iter().zip(vps.into_iter()) {
             let (windows, layout) = self.groupref(*grp_id);
             new_mapped_windows.extend(layout.layout(&viewport, &windows).into_iter());
-            if crtc_id == self.current_crtc {
-                match windows.focused() {
-                    Some(window_id) => self.connection.focus_window(window_id),
-                    None => self.connection.focus_nothing(),
-                }
-            }
         }
 
         let prev_ids: HashSet<_> = self.mapped.iter().map(|w| w.id).collect();
@@ -198,6 +192,12 @@ impl Lanta {
             self.connection.enable_window_tracking(id);
         }
         self.mapped = new_mapped_windows;
+        self.connection.focus(
+            self.crtc
+                .get(&self.current_crtc)
+                .and_then(|(_info, gid)| self.groups.get(*gid))
+                .and_then(|grp| grp.focused_window.as_ref()),
+        )
     }
 
     fn find_next_unallocated_group(&self) -> GroupId {
