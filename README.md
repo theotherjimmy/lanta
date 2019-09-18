@@ -1,27 +1,31 @@
-# lanta — [![Build Status](https://travis-ci.org/mjkillough/lanta.svg?branch=master)](https://travis-ci.org/mjkillough/lanta)
+# lanta
 
 Experiments in creating a tiling X11 window manager in Rust.
 
 Lanta is written to be customisable, simple and fast-ish.
 
-
 ## Features
 
 Lanta doesn't implement all of [EWMH](https://specifications.freedesktop.org/wm-spec/wm-spec-latest.html) or [ICCCM](https://www.x.org/releases/X11R7.6/doc/xorg-docs/specs/ICCCM/icccm.html), nor will it ever. It aims to implement just enough for use as my primary WM.
 
-At the core of Lanta is its groups (somestimes called 'workspaces' by other WMs) and each group has a stack of windows. Windows can be moved between groups, can be focused inside a group and can be shuffled up/down within the group's stack. Each group has a set of layouts which control how the stack of groups is shown on the screen and a group's layout can be altered at run-time.
+Lanta tiles windows in groups and each window may be in exactly one group.
+Windows can be moved between groups, can be focused inside a group and can be swapped with eathother.
+Each group may cycle through a global set of layouts which control how the it's windows are tiled.
 
 There are currently a few simple layouts implemented:
 
  - Stack — Maximises the currently focused window.
- - Tiled — Shows all windows in the group's stack vertically.
+ - Tiled — Tiles all windows in the group's horizontally.
+ - 3 column — Balances Windows into 3 columns of windows.
 
-... but if you look at `src/layouts.rs` you should see it's easy to add more.
-
+Further, 3 modes of navigation are available:
+ - Rotate through the groups windows.
+ - Navigate between visible windows on all screens by picking the nearest window that intersects with a ray in a direction.
+ - Navigate between visible windows on all screens by picking the nearest window that's center point lies within a cone in a direction.
 
 ## Installing
 
-Lanta currently requires the nightly version of Rust to compile. It should be relatively easy to port it to work on the stable version of Rust if required.
+Lanta currently requires the stable version of Rust to compile. 
 
 Your system must first have all of the required [dependencies](#dependencies)
 
@@ -32,11 +36,6 @@ cargo install lanta
 # Run directly or add to your .xinitrc:
 lanta
 ```
-
-However, the default configuration is almost certainly not what you want.
-
-You should either clone this repository and modify `src/bin/lanta.rs` to your liking, or (preferably) make a new binary project which depends on `lanta`. The code in `src/bin/lanta.rs` should give you an idea of what to do in your binary project.
-
 
 ## Dependencies
 
@@ -51,40 +50,119 @@ The following Ubuntu packages should allow your system to meet these requirement
 sudo apt-get install -y libx11-xcb-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-keysyms1-dev
 ```
 
-Lanta currently depends on some unreleased/custom patches in the following Rust projects: `xcb`. This won't be the case forever.
+## Configuration
+
+The configuration file, `~/.config/lanta/lanta.yaml`, containes a section each for layouts groups and keybindings.
 
 
-## Default Configuration
+### Layouts
 
-In the default configuration, the following short-cuts are available:
+The `layouts` section contains a list of objects that describe a single layout.
+A layout is given a name, type, and optional layout-specific attributes, such as padding.
 
- - `Mod4 + a` / `Mod4 + s` / `Mod4 + d` / `Mod4 + f` — Switch between groups.
- - `Mod4 + Shift + a` / `Mod4 + Shift + s` / `Mod4 + Shift + d` / `Mod4 + Shift + f` — Move currently focused window to the specified group.
- - `Mod4 + j` — Switch focus to the next window in the current group's stack.
- - `Mod4 + k` — Switch focus to the previous window in the current group's stack.
- - `Mod4 + Shift + j` — Shuffle the currently focused window up in the current group's stack.
- - `Mod4 + Shift + k` — Shuffle the currently focused window down in the current group's stack.
- - `Mod4 + Tab` — Switch the layout in the current group.
- - `Mod4 + Return` — Open a terminal (`urxvt`).
- - `Mod4 + c` — Open Google Chrome.
- - `Mod4 + v` — Open Visual Studio Code
- - `Mod4 + q` — Change wallpaper using my [`change-wallpaper`](https://github.com/mjkillough/change-wallpaper) script.
+For example, the layouts section of my config file looks like:
 
-... where `Mod4` is usually the Cmd/Windows/Super key. As described in the [installation section](#installing), it's expected you'll make your own configuration, rather than using mine.
-
-
-## Tests
-
-Unit tests:
-
-```sh
-cargo test
+```
+layouts:
+  - name: 3-column
+    type: ThreeColumn
+    padding: 5
+  - name: full screen
+    type: Stack
 ```
 
-... which are run on Travis CI for every commit.
+### Groups
 
-Integration tests using `Xephyr` are yet to be implemented.
+The `groups` section lists objects that describe groups.
+A group object contains a name, and default layout.
 
+For example, my groups section looks like:
+```
+groups:
+  - name: ♅
+    layout: 3-column
+  - name: ♆
+    layout: 3-column
+  - name: ♇
+    layout: 3-column
+  - name: ♈
+    layout: 3-column
+  - name: ♉
+    layout: 3-column
+  - name: ♊
+    layout: 3-column
+```
+
+### Keys
+
+The `keys` section is a map from emacs-like key combination descriptions to actions.
+The valid actions are:
+ - CloseFocused
+ - Focus [Style, Direction]
+ - Swap [Style, Direction]
+ - GroupNext 
+ - MoveToNextGroup
+ - GroupPrev 
+ - MoveToPrevGroup
+ - RotateCrtc
+ - RotateLayout
+ - RotateFocus
+ - Spawn
+
+ For example, my keybinding configuration looks like:
+ ```
+keys:
+  M-d: CloseFocused
+  M-l:
+    Focus:
+      - Center
+      - Right
+  M-S-l:
+    Swap:
+      - Center
+      - Right
+  M-h:
+    Focus:
+      - Center
+      - Left
+  M-S-h:
+    Swap:
+      - Center
+      - Left
+  M-j:
+    Focus:
+      - Center
+      - Down
+  M-S-j:
+    Swap:
+      - Center
+      - Down
+  M-k:
+    Focus:
+      - Center
+      - Up
+  M-S-k:
+    Swap:
+      - Center
+      - Up
+  M-down: GroupNext
+  M-S-down: MoveToNextGroup
+  M-up: GroupPrev
+  M-S-up: MoveToPrevGroup
+  M-enter: RotateCrtc
+  M-space: RotateLayout
+  M-tab: RotateFocus
+  M-p:
+    Spawn: [rofi, -show, run]
+  M-a:
+    Spawn: [amixer, -q, set, Master, 2%-]
+  M-S-a:
+    Spawn: [amixer, -q, set, Master, 2%+]
+  M-S-s:
+    Spawn: [xset, dpms, force, off]
+  M-c:
+    Spawn: [alacritty]
+```
 
 ## License
 

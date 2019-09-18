@@ -118,6 +118,11 @@ impl From<&CrtcChange> for CrtcInfo {
     }
 }
 
+pub trait XConnection {
+    fn list_crtc(&self) -> Result<Vec<(randr::Crtc, CrtcInfo)>>;
+    fn install_as_wm(&self, key_handlers: &KeyHandlers) -> Result<()>;
+}
+
 pub struct Connection {
     conn: ewmh::Connection,
     root: WindowId,
