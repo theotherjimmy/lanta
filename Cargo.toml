@@ -13,7 +13,6 @@ doc = false
 directories = "2.0"
 failure = "0.1"
 log = "0.4"
-log-panics = { version = "2.0", features = ["with-backtrace"] }
 serde_yaml = "0.8"
 x11 = "2.18"
 xdg = "2.2"
