@@ -43,23 +43,16 @@ pub mod keysym {
 pub fn intiailize_logger() -> Result<()> {
     log_panics::init();
 
-    let xdg_dirs = xdg::BaseDirectories::with_prefix("lanta")?;
-    let log_path = xdg_dirs
-        .place_data_file("lanta.log")
-        .context("Could not create log file")?;
-
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
-                "[{}] [{}] {}",
-                time::now().rfc3339(),
+                "[{}] {}",
                 record.level(),
                 message
             ))
         })
         .level(log::LevelFilter::Trace)
         .chain(std::io::stdout())
-        .chain(fern::log_file(&log_path)?)
         .apply()?;
 
     Ok(())
