@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::Lanta;
-use crate::Result;
+use std::io::Result;
 
 pub type Command = Rc<dyn Fn(&mut Lanta) -> Result<()>>;
 
@@ -13,8 +13,6 @@ pub mod lazy {
     use std::process;
     use std::rc::Rc;
     use std::sync::Mutex;
-
-    use failure::ResultExt;
 
     use super::Command;
     use crate::{Direction, NextWindow, WindowId};
@@ -91,9 +89,7 @@ pub mod lazy {
         Rc::new(move |ref mut wm| {
             let mut command = mutex.lock().unwrap();
             info!("Spawning: {:?}", *command);
-            let child = command
-                .spawn()
-                .with_context(|_| format!("Could not spawn command: {:?}", *command))?;
+            let child = command.spawn()?;
             wm.wait_on_child(child);
             Ok(())
         })

@@ -5,8 +5,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::process::Child;
 use std::rc::Rc;
-
-use failure::{Error, ResultExt};
+use std::error::Error;
 
 pub mod cmd;
 mod groups;
@@ -30,7 +29,7 @@ pub use stack::Stack;
 pub use viewport::Viewport;
 pub use x::{Connection, CrtcInfo, Event, WindowId};
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 pub mod keysym {
     pub use x11::keysym::*;
@@ -81,8 +80,7 @@ impl Lanta {
 
         let groups = groups.into_iter().collect::<Vec<Group>>().into();
         let mut crtc = connection
-            .list_crtc()
-            .context("Can't start window manager without a crtc map")?;
+            .list_crtc()?;
         crtc.retain(|(_, ci)| ci.width > 0 && ci.height > 0);
         let crtc_len = crtc.len();
         let crtc = crtc

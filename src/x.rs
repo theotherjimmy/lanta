@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::io::{Error, ErrorKind};
 
-use failure::{format_err, ResultExt};
 use xcb::randr;
 use xcb_util::keysyms::KeySymbols;
 use xcb_util::{ewmh, icccm};
@@ -136,21 +136,25 @@ pub struct Connection {
 impl Connection {
     /// Opens a connection to the X server, returning a new Connection object.
     pub fn connect() -> Result<Connection> {
-        let (conn, screen_idx) =
-            xcb::Connection::connect(None).context("Failed to connect to X server")?;
+        let (conn, screen_idx) = xcb::Connection::connect(None)?;
         let conn = ewmh::Connection::connect(conn).map_err(|(e, _)| e)?;
         let root = conn
             .get_setup()
             .roots()
             .nth(screen_idx as usize)
-            .ok_or_else(|| format_err!("Invalid screen"))?
+            .ok_or_else(|| Error::new(ErrorKind::Other, "Invalid screen"))?
             .root();
         let randr_base = conn
             .get_extension_data(&mut randr::id())
-            .ok_or_else(|| format_err!("Randr Extension not supported by this display"))?
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Other,
+                    "Randr Extension not supported by this display",
+                )
+            })?
             .first_event();
 
-        let atoms = InternedAtoms::new(&conn).context("Failed to intern atoms")?;
+        let atoms = InternedAtoms::new(&conn)?;
 
         let mut types = HashMap::new();
         types.insert(conn.WM_WINDOW_TYPE_DESKTOP(), WindowType::Desktop);
@@ -243,8 +247,7 @@ impl Connection {
             xcb::EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb::EVENT_MASK_SUBSTRUCTURE_REDIRECT,
         )];
         xcb::change_window_attributes_checked(&self.conn, self.root.to_x(), &values)
-            .request_check()
-            .context("Could not register SUBSTRUCTURE_NOTIFY/REDIRECT")?;
+            .request_check()?;
 
         self.enable_window_key_events(&self.root, key_handlers);
 
