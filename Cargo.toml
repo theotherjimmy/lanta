@@ -12,7 +12,6 @@ doc = false
 [dependencies]
 directories = "2.0"
 failure = "0.1"
-libc = "0.2"
 log = "0.4"
 log-panics = { version = "2.0", features = ["with-backtrace"] }
 serde_yaml = "0.8"
