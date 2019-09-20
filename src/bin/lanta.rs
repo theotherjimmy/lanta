@@ -1,5 +1,3 @@
-extern crate lanta;
-
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -232,6 +230,7 @@ impl std::fmt::Display for NoProjectDir {
 impl std::error::Error for NoProjectDir {}
 
 fn main() -> LantaResult<()> {
+    env_logger::init();
     let dirs = ProjectDirs::from("org", "foo", "lanta").ok_or(NoProjectDir {})?;
     let mut config_path = dirs.config_dir().to_path_buf();
     config_path.push("lanta.yaml");
@@ -253,7 +252,6 @@ fn main() -> LantaResult<()> {
         .map(|g| Group::new(g.name, &g.layout, &layouts))
         .collect();
 
-    lanta::intiailize_logger()?;
     Lanta::new(keys, groups, layouts)?.run();
 
     Ok(())

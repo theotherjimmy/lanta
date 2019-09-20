@@ -36,28 +36,6 @@ pub mod keysym {
     pub use x11::keysym::*;
 }
 
-/// Initializes a logger using the default configuration.
-///
-/// Outputs to stdout and `$XDG_DATA/lanta/lanta.log` by default.
-/// You should feel free to initialize your own logger, instead of using this.
-pub fn intiailize_logger() -> Result<()> {
-    log_panics::init();
-
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}] {}",
-                record.level(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Trace)
-        .chain(std::io::stdout())
-        .apply()?;
-
-    Ok(())
-}
-
 type GroupId = usize;
 
 struct Window {

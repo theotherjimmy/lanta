@@ -11,7 +11,6 @@ doc = false
 
 [dependencies]
 directories = "2.0"
-fern = "0.5"
 failure = "0.1"
 libc = "0.2"
 log = "0.4"
@@ -19,6 +18,10 @@ log-panics = { version = "2.0", features = ["with-backtrace"] }
 serde_yaml = "0.8"
 x11 = "2.18"
 xdg = "2.2"
+
+[dependencies.env_logger]
+version = "0.6.2"
+default_features = false
 
 [dependencies.serde]
 version = "1.0.100"
