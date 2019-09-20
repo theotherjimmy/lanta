@@ -265,10 +265,7 @@ impl Connection {
         let group_names = groups.iter().map(|g| g.name());
         ewmh::set_desktop_names(&self.conn, self.screen_idx, group_names);
         ewmh::set_number_of_desktops(&self.conn, self.screen_idx, groups.len() as u32);
-        let windows = windows
-            .iter()
-            .map(|w| w.to_x())
-            .collect::<Vec<_>>();
+        let windows = windows.iter().map(|w| w.to_x()).collect::<Vec<_>>();
         ewmh::set_client_list(&self.conn, self.screen_idx, &windows);
         ewmh::set_current_desktop(&self.conn, self.screen_idx, focused as u32);
     }
