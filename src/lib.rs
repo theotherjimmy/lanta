@@ -403,6 +403,7 @@ impl Lanta {
                     self.crtc.iter().find(|(_id, (_, gid))| w.group == *gid)
                 {
                     self.current_crtc = crtc_id;
+                    self.update_ewmh_desktops();
                 }
                 self.activate_current_groups();
             }
