@@ -152,8 +152,10 @@ impl Lanta {
             self.connection.enable_window_tracking(id);
         }
         for MappedWindow { id, vp } in next.difference(&prev) {
+            self.connection.disable_window_tracking(id);
             self.connection
                 .configure_window(id, vp.x, vp.y, vp.width, vp.height);
+            self.connection.enable_window_tracking(id);
         }
         for id in next_ids.difference(&prev_ids) {
             self.connection.disable_window_tracking(id);
