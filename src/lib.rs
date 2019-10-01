@@ -364,37 +364,6 @@ impl Lanta {
         }
     }
 
-    fn swap_in_group_with(&mut self, fun: impl FnOnce(usize, usize) -> Option<usize>) {
-        if let Some(gid) = self.group_idx() {
-            if let Some(wid) = self.groups.get(gid).and_then(|g| g.focused_window) {
-                let windows = self.windows.in_group(gid);
-                if let Some(pos) = windows.iter().position(|&w| w == wid) {
-                    if let Some(nextpos) = fun(pos, windows.len()) {
-                        if let Some(&id) = windows.get(nextpos) {
-                            self.swap_windows(wid, id);
-                        }
-                    } else {
-                        error!("No next position when swapping windows");
-                    }
-                } else {
-                    error!("Could not find current window when swapping windows");
-                }
-            } else {
-                error!("Can't swap without an active window");
-            }
-        } else {
-            error!("Tried to swap, but no group is active");
-        }
-    }
-
-    pub fn swap_with_next_in_group(&mut self) {
-        self.swap_in_group_with(|cur, len| if cur + 1 < len { Some(cur + 1) } else { None })
-    }
-
-    pub fn swap_with_previous_in_group(&mut self) {
-        self.swap_in_group_with(|cur, _| cur.checked_sub(1))
-    }
-
     fn focus_window(&mut self, wid: &WindowId) {
         if let Some(w) = self.windows.iter().find(|w| &w.id == wid) {
             if let Some(g) = self.groups.get_mut(w.group) {
