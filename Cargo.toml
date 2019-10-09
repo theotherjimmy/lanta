@@ -35,3 +35,4 @@ features = ["ewmh", "icccm", "keysyms"]
 
 [profile.release]
 debug = true
+panic = "abort"
