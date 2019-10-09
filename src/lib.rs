@@ -3,9 +3,9 @@ extern crate log;
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::process::Child;
 use std::rc::Rc;
-use std::error::Error;
 
 pub mod cmd;
 mod groups;
@@ -63,7 +63,7 @@ pub struct Lanta {
     layouts: Vec<Box<dyn Layout<WindowId>>>,
     crtc: HashMap<Crtc, (CrtcInfo, GroupId)>,
     screen: Screen<Dock>,
-    current_crtc: Crtc,
+    current_crtc: Option<Crtc>,
     children: Vec<Child>,
     mapped: Vec<MappedWindow<WindowId>>,
 }
@@ -79,8 +79,7 @@ impl Lanta {
         connection.install_as_wm(&keys)?;
 
         let groups = groups.into_iter().collect::<Vec<Group>>().into();
-        let mut crtc = connection
-            .list_crtc()?;
+        let mut crtc = connection.list_crtc()?;
         crtc.retain(|(_, ci)| ci.width > 0 && ci.height > 0);
         let crtc_len = crtc.len();
         let crtc = crtc
@@ -88,7 +87,7 @@ impl Lanta {
             .zip(0..crtc_len)
             .map(|((crtc, info), grp)| (crtc, (info, grp)))
             .collect::<HashMap<_, _>>();
-        let current_crtc = crtc.keys().next().unwrap().clone();
+        let current_crtc = crtc.keys().next().cloned();
         debug!("starting with crtc: {:?}", crtc);
         let mut wm = Lanta {
             keys,
@@ -164,8 +163,9 @@ impl Lanta {
         }
         self.mapped = new_mapped_windows;
         self.connection.focus(
-            self.crtc
-                .get(&self.current_crtc)
+            self.current_crtc
+                .as_ref()
+                .and_then(|c| self.crtc.get(c))
                 .and_then(|(_info, gid)| self.groups.get(*gid))
                 .and_then(|grp| grp.focused_window.as_ref()),
         )
@@ -184,9 +184,7 @@ impl Lanta {
     }
 
     fn update_ewmh_desktops(&self) {
-        let current_group = self
-            .group_idx()
-            .expect("Lanta always maintains an active group.");
+        let current_group = self.group_idx().unwrap_or(0);
         self.connection.update_ewmh_desktops(
             &self.groups,
             current_group,
@@ -195,8 +193,9 @@ impl Lanta {
     }
 
     fn group_idx(&self) -> Option<usize> {
-        self.crtc
-            .get(&self.current_crtc)
+        self.current_crtc
+            .as_ref()
+            .and_then(|c| self.crtc.get(c))
             .map(|(_info, idx)| idx.clone())
     }
 
@@ -214,10 +213,10 @@ impl Lanta {
             .crtc
             .keys()
             .cycle()
-            .skip_while(|&crtc_id| &self.current_crtc != crtc_id);
+            .skip_while(|&crtc_id| self.current_crtc.as_ref() != Some(crtc_id));
         let _ = iter.next();
         if let Some(next_crtc) = iter.next() {
-            self.current_crtc = *next_crtc;
+            self.current_crtc = Some(*next_crtc);
         }
         self.activate_current_groups()
     }
@@ -371,7 +370,7 @@ impl Lanta {
                 if let Some((&crtc_id, _)) =
                     self.crtc.iter().find(|(_id, (_, gid))| w.group == *gid)
                 {
-                    self.current_crtc = crtc_id;
+                    self.current_crtc = Some(crtc_id);
                     self.update_ewmh_desktops();
                 }
                 self.activate_current_groups();
@@ -399,8 +398,9 @@ impl Lanta {
             return;
         }
         let after_insert = self
-            .crtc
-            .get(&self.current_crtc)
+            .current_crtc
+            .as_ref()
+            .and_then(|c| self.crtc.get(c))
             .map(|(_info, gidx)| gidx.clone());
         match after_insert {
             Some(old_idx) if old_idx != new_idx => {
@@ -412,7 +412,7 @@ impl Lanta {
             }
             Some(_) | None => (),
         };
-        if let Some((_info, idx)) = self.crtc.get_mut(&self.current_crtc) {
+        if let Some((_info, idx)) = self.current_crtc.and_then(|c| self.crtc.get_mut(&c)) {
             *idx = new_idx;
         }
         self.update_ewmh_desktops();
@@ -604,12 +604,8 @@ impl Lanta {
             }
         } else {
             self.crtc.remove(&change.crtc);
-            if self.current_crtc == change.crtc {
-                self.current_crtc = *self
-                    .crtc
-                    .keys()
-                    .next()
-                    .expect("Must manage at least one screen");
+            if self.current_crtc == Some(change.crtc) {
+                self.current_crtc = self.crtc.keys().next().cloned();
             }
         }
         debug!(
